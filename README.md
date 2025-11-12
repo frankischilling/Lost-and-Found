@@ -4,6 +4,8 @@
 
 A full-stack web application for managing lost and found items at Wentworth Institute of Technology. Users can post lost or found items, comment on posts, and administrators can moderate content.
 
+**Repository**: [https://github.com/frankischilling/Lost-and-Found/](https://github.com/frankischilling/Lost-and-Found/)
+
 ## Project Status
 
 **Current Status**: Work In Progress (WIP)
@@ -33,9 +35,10 @@ A full-stack web application for managing lost and found items at Wentworth Inst
 ## Tech Stack
 
 ### Backend
-- **PHP 7.4+** - Server-side scripting
+- **PHP 8.0+** - Server-side scripting (required for Google API client)
 - **MySQL** - Database management
-- **Google OAuth2** - Authentication
+- **Composer** - PHP dependency management
+- **Google OAuth2 Client Library** (`google/apiclient`) - Authentication via Composer
 - **RESTful API** - JSON-based API endpoints
 
 ### Frontend
@@ -47,11 +50,11 @@ A full-stack web application for managing lost and found items at Wentworth Inst
 
 ## Prerequisites
 
-- PHP 7.4 or higher
-- MySQL 5.7+ or MariaDB 10.2+
-- Apache/Nginx web server
-- Composer (for dependency management)
-- Google OAuth2 credentials
+- **PHP 8.0 or higher** (required for Google API client library)
+- **MySQL 5.7+** or MariaDB 10.2+
+- **Apache/Nginx** web server
+- **Composer** - PHP dependency manager ([Download Composer](https://getcomposer.org/download/))
+- **Google OAuth2 credentials** - Get from [Google Cloud Console](https://console.cloud.google.com/)
 
 ## Installation
 
@@ -68,7 +71,39 @@ Create a MySQL database:
 CREATE DATABASE lostandfound CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 3. Configure Environment
+### 3. Install PHP Dependencies
+
+This project uses Composer to manage PHP dependencies, including the Google OAuth2 client library.
+
+**First, install Composer** (if not already installed):
+- Download from: https://getcomposer.org/download/
+- Or install via package manager:
+  ```bash
+  # Linux/Mac
+  curl -sS https://getcomposer.org/installer | php
+  sudo mv composer.phar /usr/local/bin/composer
+  
+  # Windows
+  # Download and run Composer-Setup.exe from https://getcomposer.org/download/
+  ```
+
+**Then install project dependencies:**
+```bash
+composer install
+```
+
+This will install:
+- **google/apiclient** - Google OAuth2 and API client library (required for authentication)
+- Other PHP dependencies as specified in `composer.json`
+
+**Note**: Make sure PHP 8.0 or higher is installed, as required by the Google API client.
+
+### 4. Configure Environment
+
+Copy the example config file and edit with your database credentials:
+```bash
+cp public_html/config.php.example public_html/config.php
+```
 
 Edit `public_html/config.php` with your database credentials:
 ```php
@@ -281,7 +316,8 @@ See the [LICENSE](LICENSE) file for details.
 ## Contact
 
 For questions or support:
-- **Project Maintainer**: frankischilling
+- **Project Maintainer**: Francis Hagan
+- **Email**: haganf@wit.edu
 
 ## Acknowledgments
 
