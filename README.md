@@ -4,8 +4,6 @@
 
 A full-stack web application for managing lost and found items at Wentworth Institute of Technology. Users can post lost or found items, comment on posts, and administrators can moderate content.
 
-**Repository**: [https://github.com/frankischilling/Lost-and-Found/](https://github.com/frankischilling/Lost-and-Found/)
-
 ## Project Status
 
 **Current Status**: Work In Progress (WIP)
