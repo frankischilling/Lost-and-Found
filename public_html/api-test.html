@@ -966,7 +966,134 @@
             resultEl.classList.add('show');
             statusEl.textContent = statusCode >= 200 && statusCode < 300 ? '✓ Success' : '✗ Error';
             statusEl.className = 'status-badge ' + (statusCode >= 200 && statusCode < 300 ? 'status-success' : 'status-error');
-            responseEl.textContent = JSON.stringify(data, null, 2);
+            
+            // Format JSON with image previews if this is a post response
+            let jsonText = JSON.stringify(data, null, 2);
+            
+            // Check if this is a post response with photo_ids
+            if (statusCode >= 200 && statusCode < 300) {
+                // Check for photo_ids in various response formats:
+                // 1. Direct post object: { id: "...", photo_ids: [...] }
+                // 2. Wrapped in status: { status: "success", posts: [...] }
+                // 3. Array of posts: [{ id: "...", photo_ids: [...] }, ...]
+                const hasPhotoIds = data && (
+                    (data.photo_ids !== undefined) || 
+                    (data.posts && Array.isArray(data.posts) && data.posts.some(item => item.photo_ids)) ||
+                    (Array.isArray(data) && data.some(item => item.photo_ids))
+                );
+                
+                if (hasPhotoIds) {
+                    // Create enhanced display with images
+                    const imagesHtml = extractAndDisplayImages(data, responseId);
+                    if (imagesHtml) {
+                        responseEl.innerHTML = '<pre>' + escapeHtml(jsonText) + '</pre>' + imagesHtml;
+                    } else {
+                        responseEl.textContent = jsonText;
+                    }
+                } else {
+                    responseEl.textContent = jsonText;
+                }
+            } else {
+                responseEl.textContent = jsonText;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function extractAndDisplayImages(data, containerId) {
+            let imagesHtml = '';
+            let photoIds = [];
+            
+            // Handle wrapped response with posts array: { status: "success", posts: [...] }
+            if (data && data.posts && Array.isArray(data.posts)) {
+                data.posts.forEach(post => {
+                    if (post.photo_ids) {
+                        if (Array.isArray(post.photo_ids)) {
+                            photoIds.push(...post.photo_ids);
+                        } else if (typeof post.photo_ids === 'string') {
+                            try {
+                                const parsed = JSON.parse(post.photo_ids);
+                                if (Array.isArray(parsed)) {
+                                    photoIds.push(...parsed);
+                                }
+                            } catch (e) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                });
+            }
+            // Handle single post object (direct response from GET /posts.php?id=...)
+            else if (data && data.photo_ids !== undefined) {
+                if (Array.isArray(data.photo_ids)) {
+                    photoIds = data.photo_ids;
+                } else if (typeof data.photo_ids === 'string') {
+                    try {
+                        const parsed = JSON.parse(data.photo_ids);
+                        if (Array.isArray(parsed)) {
+                            photoIds = parsed;
+                        }
+                    } catch (e) {
+                        photoIds = [];
+                    }
+                }
+            }
+            // Handle array of posts (direct array response)
+            else if (Array.isArray(data)) {
+                // Collect all photo_ids from all posts
+                data.forEach(post => {
+                    if (post.photo_ids) {
+                        if (Array.isArray(post.photo_ids)) {
+                            photoIds.push(...post.photo_ids);
+                        } else if (typeof post.photo_ids === 'string') {
+                            try {
+                                const parsed = JSON.parse(post.photo_ids);
+                                if (Array.isArray(parsed)) {
+                                    photoIds.push(...parsed);
+                                }
+                            } catch (e) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                });
+            }
+            
+            if (photoIds.length > 0) {
+                // Remove duplicates
+                photoIds = [...new Set(photoIds)];
+                
+                imagesHtml = '<div class="photo-preview-container" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #444;">';
+                imagesHtml += '<h4 style="margin-bottom: 10px; color: #d4d4d4; font-weight: 600;">Photos (' + photoIds.length + '):</h4>';
+                imagesHtml += '<div class="photo-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;">';
+                
+                photoIds.forEach((photoId, index) => {
+                    const photoUrl = `${BASE_URL}/view_photo.php?id=${encodeURIComponent(photoId)}`;
+                    const photoItemId = `photo-item-${index}-${Date.now()}`;
+                    imagesHtml += `
+                        <div class="photo-item" id="${photoItemId}" style="position: relative; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; background: #f5f5f5;">
+                            <a href="${photoUrl}" target="_blank" style="display: block;">
+                                <img src="${photoUrl}" 
+                                     alt="Photo ${photoId.substring(0, 8)}..." 
+                                     style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: pointer;"
+                                     onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'padding: 20px; text-align: center; color: #999;\\'>Failed to load<br/>' + this.alt + '</div>';"
+                                     loading="lazy">
+                            </a>
+                            <div style="padding: 5px; font-size: 11px; color: #666; word-break: break-all; text-align: center; background: white;">
+                                ${photoId.substring(0, 8)}...
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                imagesHtml += '</div></div>';
+            }
+            
+            return imagesHtml;
         }
         
         async function checkSession() {
