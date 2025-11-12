@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Endpoint Tester - For Lucas</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .endpoint-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .endpoint-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .endpoint-title {
+            font-size: 1.3em;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .method-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .method-get { background: #4CAF50; color: white; }
+        .method-post { background: #2196F3; color: white; }
+        .method-put { background: #FF9800; color: white; }
+        .method-delete { background: #f44336; color: white; }
+        
+        .endpoint-url {
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #666;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            min-height: 100px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .result-container {
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .result-container.show {
+            display: block;
+        }
+        
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .status-success {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .status-error {
+            background: #f44336;
+            color: white;
+        }
+        
+        .result-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .quick-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            background: #f0f0f0;
+            color: #666;
+        }
+        
+        .quick-btn:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 API Endpoint Tester</h1>
+        
+        <!-- Authentication Status -->
+        <div class="endpoint-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <div class="endpoint-header" style="border-bottom-color: rgba(255,255,255,0.3);">
+                <span class="endpoint-title" style="color: white;">🔐 Authentication Status</span>
+            </div>
+            <div id="auth-status" style="padding: 15px 0;">
+                <div id="auth-loading">Checking authentication status...</div>
+                <div id="auth-info" style="display: none;">
+                    <div style="margin-bottom: 15px;">
+                        <strong>Status:</strong> <span id="auth-logged-in-status"></span>
+                    </div>
+                    <div id="user-info" style="display: none; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 6px; margin-top: 10px;">
+                        <div><strong>Name:</strong> <span id="user-name"></span></div>
+                        <div><strong>Email:</strong> <span id="user-email"></span></div>
+                        <div id="user-picture-container" style="margin-top: 10px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="quick-actions">
+                <button class="quick-btn" onclick="checkSession()" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3);">Refresh Status</button>
+                <button class="quick-btn" onclick="window.location.href='/auth/login.php?redirect=' + encodeURIComponent(window.location.pathname)" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3);" id="login-btn">Login with Google</button>
+                <button class="quick-btn" onclick="testLogout()" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); display: none;" id="logout-btn">Logout</button>
+            </div>
+        </div>
+        
+        <!-- Session Check Endpoint -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Check Session</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="endpoint-url" id="session-url"></div>
+            <button onclick="testSession()">Check Session</button>
+            <div class="result-container" id="session-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="session-status"></span>
+                </div>
+                <div class="result-box" id="session-response"></div>
+            </div>
+        </div>
+        
+        <!-- Logout Endpoint -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Logout</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="endpoint-url" id="logout-url"></div>
+            <button onclick="testLogout()">Logout</button>
+            <div class="result-container" id="logout-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="logout-status"></span>
+                </div>
+                <div class="result-box" id="logout-response"></div>
+            </div>
+        </div>
+        
+        <!-- Health Check -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Health Check</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="endpoint-url" id="health-url"></div>
+            <button onclick="testHealth()">Test Health Check</button>
+            <div class="result-container" id="health-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="health-status"></span>
+                </div>
+                <div class="result-box" id="health-response"></div>
+            </div>
+        </div>
+        
+        <!-- Database Test -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Database Connection Test</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="endpoint-url" id="db-url"></div>
+            <button onclick="testDatabase()">Test Database Connection</button>
+            <div class="result-container" id="db-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="db-status"></span>
+                </div>
+                <div class="result-box" id="db-response"></div>
+            </div>
+        </div>
+        
+        <!-- Get All Posts -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Get All Posts</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="form-group">
+                <label>Filter by Type:</label>
+                <select id="filter-type" onchange="updateGetAllUrl()">
+                    <option value="">All Posts</option>
+                    <option value="lost">Lost Items</option>
+                    <option value="found">Found Items</option>
+                </select>
+            </div>
+            <div class="endpoint-url" id="get-all-url"></div>
+            <button onclick="getAllPosts()">Get All Posts</button>
+            <div class="result-container" id="get-all-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="get-all-status"></span>
+                </div>
+                <div class="result-box" id="get-all-response"></div>
+            </div>
+        </div>
+        
+        <!-- Get Single Post -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Get Single Post</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="form-group">
+                <label>Post ID (UUID):</label>
+                <input type="text" id="get-post-id" placeholder="Enter UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;">
+            </div>
+            <div class="endpoint-url" id="get-post-url"></div>
+            <button onclick="getPost()">Get Post</button>
+            <div class="result-container" id="get-post-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="get-post-status"></span>
+                </div>
+                <div class="result-box" id="get-post-response"></div>
+            </div>
+        </div>
+        
+        <!-- Create Post -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Create New Post</span>
+                <span class="method-badge method-post">POST</span>
+            </div>
+            <div class="form-group">
+                <label>Post Type: <span style="color: red;">*</span></label>
+                <select id="post-type" required>
+                    <option value="">Select type...</option>
+                    <option value="lost">Lost</option>
+                    <option value="found">Found</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Item Name/Type: <span style="color: red;">*</span></label>
+                <input type="text" id="post-item-name" placeholder="Enter item name or type" required>
+            </div>
+            <div class="form-group">
+                <label>Description:</label>
+                <textarea id="post-description" placeholder="Enter description (optional)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Content:</label>
+                <textarea id="post-content" placeholder="Enter full content (optional)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Location Found:</label>
+                <input type="text" id="post-location" placeholder="Enter location where item was found/lost (optional)">
+            </div>
+            <div class="form-group">
+                <label>Current Location:</label>
+                <input type="text" id="post-current-location" placeholder="Enter current location of the item (optional)">
+            </div>
+            <div class="form-group">
+                <label>Date Found:</label>
+                <input type="date" id="post-date-found" placeholder="YYYY-MM-DD (optional)">
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated):</label>
+                <input type="text" id="post-tags" placeholder="e.g., wallet, brown, leather (optional)">
+            </div>
+            <div class="form-group">
+                <label>Photo IDs (comma-separated):</label>
+                <input type="text" id="post-photo-ids" placeholder="e.g., photo1.jpg, photo2.jpg (optional)">
+                <small style="display: block; margin-top: 5px; color: #666;">Enter photo identifiers separated by commas</small>
+            </div>
+            <div class="endpoint-url">POST /posts.php</div>
+            <button onclick="createPost()">Create Post</button>
+            <div class="result-container" id="create-post-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="create-post-status"></span>
+                </div>
+                <div class="result-box" id="create-post-response"></div>
+            </div>
+        </div>
+        
+        <!-- Update Post -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Update Post</span>
+                <span class="method-badge method-put">PUT</span>
+            </div>
+            <div class="form-group">
+                <label>Post ID (UUID):</label>
+                <input type="text" id="update-post-id" placeholder="Enter UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;">
+            </div>
+            <div class="form-group">
+                <label>Post Type:</label>
+                <select id="update-post-type">
+                    <option value="">Keep current</option>
+                    <option value="lost">Lost</option>
+                    <option value="found">Found</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Item Name:</label>
+                <input type="text" id="update-item-name" placeholder="Enter new item name (optional)">
+            </div>
+            <div class="form-group">
+                <label>Content:</label>
+                <textarea id="update-content" placeholder="Enter new content (optional)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Description:</label>
+                <textarea id="update-description" placeholder="Enter new description (optional)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Location Found:</label>
+                <input type="text" id="update-location" placeholder="Enter location (optional)">
+            </div>
+            <div class="form-group">
+                <label>Current Location:</label>
+                <input type="text" id="update-current-location" placeholder="Enter current location (optional)">
+            </div>
+            <div class="form-group">
+                <label>Date Found:</label>
+                <input type="date" id="update-date-found" placeholder="YYYY-MM-DD (optional)">
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated):</label>
+                <input type="text" id="update-tags" placeholder="e.g., wallet, brown, leather (optional)">
+            </div>
+            <div class="form-group">
+                <label>Photo IDs (comma-separated):</label>
+                <input type="text" id="update-photo-ids" placeholder="e.g., photo1.jpg, photo2.jpg (optional)">
+                <small style="display: block; margin-top: 5px; color: #666;">Enter photo identifiers separated by commas</small>
+            </div>
+            <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <label>Admin Approval Status <span style="color: #856404;">(Admin Only)</span>:</label>
+                <select id="update-approval-status">
+                    <option value="">Keep current</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+                <small style="display: block; margin-top: 5px; color: #856404;">Only admins can update the approval status of posts.</small>
+            </div>
+            <div class="endpoint-url" id="update-post-url"></div>
+            <button onclick="updatePost()">Update Post</button>
+            <div class="result-container" id="update-post-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="update-post-status"></span>
+                </div>
+                <div class="result-box" id="update-post-response"></div>
+            </div>
+        </div>
+        
+        <!-- Delete Post -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Delete Post</span>
+                <span class="method-badge method-delete">DELETE</span>
+            </div>
+            <div class="form-group">
+                <label>Post ID (UUID):</label>
+                <input type="text" id="delete-post-id" placeholder="Enter UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;">
+            </div>
+            <div class="endpoint-url" id="delete-post-url"></div>
+            <button onclick="deletePost()">Delete Post</button>
+            <div class="result-container" id="delete-post-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="delete-post-status"></span>
+                </div>
+                <div class="result-box" id="delete-post-response"></div>
+            </div>
+        </div>
+        
+        <!-- Get Comments for Post -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Get Comments for Post</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="form-group">
+                <label>Select Post:</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="get-comments-post-select" onchange="document.getElementById('get-comments-post-id').value = this.value; updateGetCommentsUrl();" style="flex: 1;">
+                        <option value="">-- Select a post --</option>
+                    </select>
+                    <button onclick="loadPostsForDropdowns()" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;" title="Refresh posts list">🔄</button>
+                </div>
+                <small style="display: block; margin-top: 5px; color: #666;">Or enter Post UUID manually below</small>
+            </div>
+            <div class="form-group">
+                <label>Post ID (UUID):</label>
+                <input type="text" id="get-comments-post-id" placeholder="Enter Post UUID or select above" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;">
+            </div>
+            <div class="endpoint-url" id="get-comments-url"></div>
+            <button id="get-comments-btn">Get Comments</button>
+            <div class="result-container" id="get-comments-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="get-comments-status"></span>
+                </div>
+                <div class="result-box" id="get-comments-response"></div>
+            </div>
+        </div>
+        
+        <!-- Get Single Comment -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Get Single Comment</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="form-group">
+                <label>Comment ID (UUID):</label>
+                <input type="text" id="get-comment-id" placeholder="Enter Comment UUID" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;">
+            </div>
+            <div class="endpoint-url" id="get-comment-url"></div>
+            <button id="get-comment-btn">Get Comment</button>
+            <div class="result-container" id="get-comment-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="get-comment-status"></span>
+                </div>
+                <div class="result-box" id="get-comment-response"></div>
+            </div>
+        </div>
+        
+        <!-- Create Comment -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Create Comment</span>
+                <span class="method-badge method-post">POST</span>
+            </div>
+            <div class="form-group">
+                <label>Select Post: <span style="color: red;">*</span></label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="comment-post-select" onchange="document.getElementById('comment-post-id').value = this.value;" style="flex: 1;">
+                        <option value="">-- Select a post --</option>
+                    </select>
+                    <button onclick="loadPostsForDropdowns()" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;" title="Refresh posts list">🔄</button>
+                </div>
+                <small style="display: block; margin-top: 5px; color: #666;">Or enter Post UUID manually below</small>
+            </div>
+            <div class="form-group">
+                <label>Post ID (UUID): <span style="color: red;">*</span></label>
+                <input type="text" id="comment-post-id" placeholder="Enter Post UUID or select above" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;" required>
+            </div>
+            <div class="form-group">
+                <label>Comment Content: <span style="color: red;">*</span></label>
+                <textarea id="comment-content" placeholder="Enter your comment" required></textarea>
+            </div>
+            <div class="endpoint-url">POST /comments.php</div>
+            <button id="create-comment-btn">Create Comment</button>
+            <div class="result-container" id="create-comment-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="create-comment-status"></span>
+                </div>
+                <div class="result-box" id="create-comment-response"></div>
+            </div>
+        </div>
+        
+        <!-- Update Comment -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Update Comment</span>
+                <span class="method-badge method-put">PUT</span>
+            </div>
+            <div class="form-group">
+                <label>Comment ID (UUID): <span style="color: red;">*</span></label>
+                <input type="text" id="update-comment-id" placeholder="Enter Comment UUID" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;" required>
+            </div>
+            <div class="form-group">
+                <label>New Comment Content: <span style="color: red;">*</span></label>
+                <textarea id="update-comment-content" placeholder="Enter updated comment text" required></textarea>
+            </div>
+            <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <small style="display: block; color: #856404;">
+                    <strong>Permission Rules:</strong><br>
+                    • Users can only edit their own comments<br>
+                    • Admins can edit any comment
+                </small>
+            </div>
+            <div class="endpoint-url" id="update-comment-url"></div>
+            <button id="update-comment-btn">Update Comment</button>
+            <div class="result-container" id="update-comment-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="update-comment-status"></span>
+                </div>
+                <div class="result-box" id="update-comment-response"></div>
+            </div>
+        </div>
+        
+        <!-- Delete Comment -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Delete Comment</span>
+                <span class="method-badge method-delete">DELETE</span>
+            </div>
+            <div class="form-group">
+                <label>Comment ID (UUID):</label>
+                <input type="text" id="delete-comment-id" placeholder="Enter Comment UUID" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;">
+            </div>
+            <div class="endpoint-url" id="delete-comment-url"></div>
+            <button id="delete-comment-btn">Delete Comment</button>
+            <div class="result-container" id="delete-comment-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="delete-comment-status"></span>
+                </div>
+                <div class="result-box" id="delete-comment-response"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = window.location.origin;
+        
+        // Initialize URL displays
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('health-url').textContent = 'GET ' + BASE_URL + '/health.php';
+            document.getElementById('db-url').textContent = 'GET ' + BASE_URL + '/db-test.php';
+            document.getElementById('session-url').textContent = 'GET ' + BASE_URL + '/auth/session.php';
+            document.getElementById('logout-url').textContent = 'GET ' + BASE_URL + '/auth/logout.php';
+            updateGetAllUrl();
+            updateGetPostUrl();
+            updateUpdatePostUrl();
+            updateDeletePostUrl();
+            updateGetCommentsUrl();
+            updateGetCommentUrl();
+            updateUpdateCommentUrl();
+            updateDeleteCommentUrl();
+            
+            // Update URLs when values change
+            document.getElementById('filter-type').addEventListener('change', updateGetAllUrl);
+            document.getElementById('get-post-id').addEventListener('input', updateGetPostUrl);
+            document.getElementById('update-post-id').addEventListener('input', updateUpdatePostUrl);
+            document.getElementById('delete-post-id').addEventListener('input', updateDeletePostUrl);
+            document.getElementById('get-comments-post-id').addEventListener('input', updateGetCommentsUrl);
+            document.getElementById('get-comment-id').addEventListener('input', updateGetCommentUrl);
+            document.getElementById('update-comment-id').addEventListener('input', updateUpdateCommentUrl);
+            document.getElementById('delete-comment-id').addEventListener('input', updateDeleteCommentUrl);
+            
+            // Add event listeners for comment buttons
+            document.getElementById('create-comment-btn').addEventListener('click', createComment);
+            document.getElementById('get-comments-btn').addEventListener('click', getComments);
+            document.getElementById('get-comment-btn').addEventListener('click', getComment);
+            document.getElementById('update-comment-btn').addEventListener('click', updateComment);
+            document.getElementById('delete-comment-btn').addEventListener('click', deleteComment);
+            
+            // Check authentication status on load
+            checkSession();
+            
+            // Load posts for dropdowns
+            loadPostsForDropdowns();
+        });
+        
+        // Function to load posts and populate dropdowns
+        async function loadPostsForDropdowns() {
+            try {
+                const response = await fetch(`${BASE_URL}/posts.php`);
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.posts) {
+                    const posts = data.posts;
+                    
+                    // Get all post select dropdowns
+                    const selects = [
+                        'comment-post-select',
+                        'get-comments-post-select'
+                    ];
+                    
+                    selects.forEach(selectId => {
+                        const select = document.getElementById(selectId);
+                        if (select) {
+                            // Clear existing options except the first one
+                            while (select.options.length > 1) {
+                                select.remove(1);
+                            }
+                            
+                            // Add posts to dropdown
+                            posts.forEach(post => {
+                                const option = document.createElement('option');
+                                option.value = post.id;
+                                const title = post.title || post.item_name || 'Untitled';
+                                const type = post.post_type || 'unknown';
+                                const status = post.admin_approval_status || 'pending';
+                                option.textContent = `${title} (${type}, ${status}) - ${post.id.substring(0, 8)}...`;
+                                select.appendChild(option);
+                            });
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading posts for dropdowns:', error);
+            }
+        }
+        
+        function updateGetAllUrl() {
+            const type = document.getElementById('filter-type').value;
+            const url = type ? `${BASE_URL}/posts.php?type=${type}` : `${BASE_URL}/posts.php`;
+            document.getElementById('get-all-url').textContent = `GET ${url}`;
+        }
+        
+        function updateGetPostUrl() {
+            const id = document.getElementById('get-post-id').value;
+            document.getElementById('get-post-url').textContent = `GET ${BASE_URL}/posts.php?id=${id}`;
+        }
+        
+        function updateUpdatePostUrl() {
+            const id = document.getElementById('update-post-id').value;
+            document.getElementById('update-post-url').textContent = `PUT ${BASE_URL}/posts.php?id=${id}`;
+        }
+        
+        function updateDeletePostUrl() {
+            const id = document.getElementById('delete-post-id').value;
+            document.getElementById('delete-post-url').textContent = `DELETE ${BASE_URL}/posts.php?id=${id}`;
+        }
+        
+        function updateGetCommentsUrl() {
+            const postId = document.getElementById('get-comments-post-id').value;
+            document.getElementById('get-comments-url').textContent = `GET ${BASE_URL}/comments.php?post_id=${postId}`;
+        }
+        
+        function updateGetCommentUrl() {
+            const id = document.getElementById('get-comment-id').value;
+            document.getElementById('get-comment-url').textContent = `GET ${BASE_URL}/comments.php?id=${id}`;
+        }
+        
+        function updateUpdateCommentUrl() {
+            const id = document.getElementById('update-comment-id').value;
+            document.getElementById('update-comment-url').textContent = `PUT ${BASE_URL}/comments.php?id=${id}`;
+        }
+        
+        function updateDeleteCommentUrl() {
+            const id = document.getElementById('delete-comment-id').value;
+            document.getElementById('delete-comment-url').textContent = `DELETE ${BASE_URL}/comments.php?id=${id}`;
+        }
+        
+        function displayResult(elementId, statusId, responseId, data, statusCode) {
+            const resultEl = document.getElementById(elementId);
+            const statusEl = document.getElementById(statusId);
+            const responseEl = document.getElementById(responseId);
+            
+            resultEl.classList.add('show');
+            statusEl.textContent = statusCode >= 200 && statusCode < 300 ? '✓ Success' : '✗ Error';
+            statusEl.className = 'status-badge ' + (statusCode >= 200 && statusCode < 300 ? 'status-success' : 'status-error');
+            responseEl.textContent = JSON.stringify(data, null, 2);
+        }
+        
+        async function checkSession() {
+            try {
+                const response = await fetch(`${BASE_URL}/auth/session.php`);
+                const data = await response.json();
+                
+                const authLoading = document.getElementById('auth-loading');
+                const authInfo = document.getElementById('auth-info');
+                const loggedInStatus = document.getElementById('auth-logged-in-status');
+                const userInfo = document.getElementById('user-info');
+                const loginBtn = document.getElementById('login-btn');
+                const logoutBtn = document.getElementById('logout-btn');
+                
+                authLoading.style.display = 'none';
+                authInfo.style.display = 'block';
+                
+                if (data.logged_in && data.user) {
+                    loggedInStatus.textContent = '✓ Logged In';
+                    loggedInStatus.style.color = '#4CAF50';
+                    userInfo.style.display = 'block';
+                    document.getElementById('user-name').textContent = data.user.name || 'N/A';
+                    document.getElementById('user-email').textContent = data.user.email || 'N/A';
+                    
+                    const pictureContainer = document.getElementById('user-picture-container');
+                    if (data.user.picture) {
+                        pictureContainer.innerHTML = `<img src="${data.user.picture}" alt="Profile" style="width: 50px; height: 50px; border-radius: 50%; border: 2px solid white;">`;
+                    } else {
+                        pictureContainer.innerHTML = '';
+                    }
+                    
+                    loginBtn.style.display = 'none';
+                    logoutBtn.style.display = 'inline-block';
+                } else {
+                    loggedInStatus.textContent = '✗ Not Logged In';
+                    loggedInStatus.style.color = '#f44336';
+                    userInfo.style.display = 'none';
+                    loginBtn.style.display = 'inline-block';
+                    logoutBtn.style.display = 'none';
+                }
+            } catch (error) {
+                document.getElementById('auth-loading').textContent = 'Error checking authentication: ' + error.message;
+            }
+        }
+        
+        async function testSession() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.innerHTML = '<span class="loading"></span>Checking...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/auth/session.php`);
+                const data = await response.json();
+                displayResult('session-result', 'session-status', 'session-response', data, response.status);
+                
+                // Update auth status display
+                checkSession();
+            } catch (error) {
+                displayResult('session-result', 'session-status', 'session-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function testLogout() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.innerHTML = '<span class="loading"></span>Logging out...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/auth/logout.php`);
+                const data = await response.json();
+                displayResult('logout-result', 'logout-status', 'logout-response', data, response.status);
+                
+                // Update auth status display
+                setTimeout(() => {
+                    checkSession();
+                }, 500);
+                
+                // If logout was successful, show message
+                if (response.ok && data.status === 'success') {
+                    setTimeout(() => {
+                        alert('Logged out successfully!');
+                    }, 100);
+                }
+            } catch (error) {
+                displayResult('logout-result', 'logout-status', 'logout-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function testHealth() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.innerHTML = '<span class="loading"></span>Testing...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/health.php`);
+                const data = await response.json();
+                displayResult('health-result', 'health-status', 'health-response', data, response.status);
+            } catch (error) {
+                displayResult('health-result', 'health-status', 'health-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function testDatabase() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.innerHTML = '<span class="loading"></span>Testing...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/db-test.php`);
+                const data = await response.json();
+                displayResult('db-result', 'db-status', 'db-response', data, response.status);
+            } catch (error) {
+                displayResult('db-result', 'db-status', 'db-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function getAllPosts() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const type = document.getElementById('filter-type').value;
+            button.innerHTML = '<span class="loading"></span>Loading...';
+            button.disabled = true;
+            
+            try {
+                const url = type ? `${BASE_URL}/posts.php?type=${type}` : `${BASE_URL}/posts.php`;
+                const response = await fetch(url);
+                const data = await response.json();
+                displayResult('get-all-result', 'get-all-status', 'get-all-response', data, response.status);
+            } catch (error) {
+                displayResult('get-all-result', 'get-all-status', 'get-all-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function getPost() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('get-post-id').value.trim();
+            
+            if (!id) {
+                alert('Post ID (UUID) is required!');
+                return;
+            }
+            
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Loading...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}`);
+                const data = await response.json();
+                displayResult('get-post-result', 'get-post-status', 'get-post-response', data, response.status);
+            } catch (error) {
+                displayResult('get-post-result', 'get-post-status', 'get-post-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function createPost() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const postType = document.getElementById('post-type').value;
+            const itemName = document.getElementById('post-item-name').value.trim();
+            const description = document.getElementById('post-description').value.trim();
+            const content = document.getElementById('post-content').value.trim();
+            const locationFound = document.getElementById('post-location').value.trim();
+            const currentLocation = document.getElementById('post-current-location').value.trim();
+            const dateFound = document.getElementById('post-date-found').value;
+            const tagsInput = document.getElementById('post-tags').value.trim();
+            const photoIdsInput = document.getElementById('post-photo-ids').value.trim();
+            
+            if (!postType) {
+                alert('Post type is required!');
+                return;
+            }
+            
+            if (!itemName) {
+                alert('Item name is required!');
+                return;
+            }
+            
+            // Parse tags from comma-separated string
+            let tags = null;
+            if (tagsInput) {
+                tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+            }
+            
+            // Parse photo IDs from comma-separated string
+            let photoIds = null;
+            if (photoIdsInput) {
+                photoIds = photoIdsInput.split(',').map(id => id.trim()).filter(id => id.length > 0);
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Creating...';
+            button.disabled = true;
+            
+            try {
+                const postData = {
+                    post_type: postType,
+                    item_name: itemName,
+                    description: description || null,
+                    content: content || null,
+                    location_found: locationFound || null,
+                    current_location: currentLocation || null,
+                    date_found: dateFound || null,
+                    tags: tags,
+                    photo_ids: photoIds
+                };
+                
+                const response = await fetch(`${BASE_URL}/posts.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(postData)
+                });
+                const data = await response.json();
+                displayResult('create-post-result', 'create-post-status', 'create-post-response', data, response.status);
+                
+                if (response.ok) {
+                    // Clear form
+                    document.getElementById('post-type').value = '';
+                    document.getElementById('post-item-name').value = '';
+                    document.getElementById('post-description').value = '';
+                    document.getElementById('post-content').value = '';
+                    document.getElementById('post-location').value = '';
+                    document.getElementById('post-current-location').value = '';
+                    document.getElementById('post-date-found').value = '';
+                    document.getElementById('post-tags').value = '';
+                    document.getElementById('post-photo-ids').value = '';
+                    
+                    // Reload posts dropdowns to include the new post
+                    loadPostsForDropdowns();
+                }
+            } catch (error) {
+                displayResult('create-post-result', 'create-post-status', 'create-post-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function updatePost() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('update-post-id').value.trim();
+            const postType = document.getElementById('update-post-type').value;
+            const itemName = document.getElementById('update-item-name').value.trim();
+            const content = document.getElementById('update-content').value.trim();
+            const description = document.getElementById('update-description').value.trim();
+            const locationFound = document.getElementById('update-location').value.trim();
+            const currentLocation = document.getElementById('update-current-location').value.trim();
+            const dateFound = document.getElementById('update-date-found').value;
+            const tagsInput = document.getElementById('update-tags').value.trim();
+            const photoIdsInput = document.getElementById('update-photo-ids').value.trim();
+            const approvalStatus = document.getElementById('update-approval-status').value;
+            
+            if (!id) {
+                alert('Post ID (UUID) is required!');
+                return;
+            }
+            
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            const updateData = {};
+            if (postType) updateData.post_type = postType;
+            if (itemName) updateData.item_name = itemName;
+            if (content) updateData.content = content;
+            if (description) updateData.description = description;
+            if (locationFound) updateData.location_found = locationFound;
+            if (currentLocation) updateData.current_location = currentLocation;
+            if (dateFound) updateData.date_found = dateFound;
+            if (tagsInput) {
+                updateData.tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+            }
+            if (photoIdsInput) {
+                updateData.photo_ids = photoIdsInput.split(',').map(id => id.trim()).filter(id => id.length > 0);
+            }
+            if (approvalStatus) {
+                updateData.admin_approval_status = approvalStatus;
+            }
+            
+            if (Object.keys(updateData).length === 0) {
+                alert('Please provide at least one field to update!');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Updating...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(updateData)
+                });
+                const data = await response.json();
+                displayResult('update-post-result', 'update-post-status', 'update-post-response', data, response.status);
+            } catch (error) {
+                displayResult('update-post-result', 'update-post-status', 'update-post-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function deletePost() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('delete-post-id').value.trim();
+            
+            if (!id) {
+                alert('Post ID (UUID) is required!');
+                return;
+            }
+            
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete post with ID ${id}?`)) {
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Deleting...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                displayResult('delete-post-result', 'delete-post-status', 'delete-post-response', data, response.status);
+            } catch (error) {
+                displayResult('delete-post-result', 'delete-post-status', 'delete-post-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function getComments(event) {
+            const button = event ? event.target : document.getElementById('get-comments-btn');
+            const originalText = button.textContent;
+            const postId = document.getElementById('get-comments-post-id').value.trim();
+            
+            if (!postId) {
+                alert('Post ID (UUID) is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(postId)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Loading...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/comments.php?post_id=${encodeURIComponent(postId)}`);
+                const data = await response.json();
+                displayResult('get-comments-result', 'get-comments-status', 'get-comments-response', data, response.status);
+            } catch (error) {
+                displayResult('get-comments-result', 'get-comments-status', 'get-comments-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function getComment(event) {
+            const button = event ? event.target : document.getElementById('get-comment-btn');
+            const originalText = button.textContent;
+            const id = document.getElementById('get-comment-id').value.trim();
+            
+            if (!id) {
+                alert('Comment ID (UUID) is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Loading...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/comments.php?id=${encodeURIComponent(id)}`);
+                const data = await response.json();
+                displayResult('get-comment-result', 'get-comment-status', 'get-comment-response', data, response.status);
+            } catch (error) {
+                displayResult('get-comment-result', 'get-comment-status', 'get-comment-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function createComment(event) {
+            console.log('createComment function called', event);
+            
+            // Get button from event target or by ID
+            const button = event ? event.target : document.getElementById('create-comment-btn');
+            
+            if (!button) {
+                console.error('Could not find button element');
+                alert('Error: Could not find button. Please check the console.');
+                return;
+            }
+            
+            const originalText = button.textContent;
+            const postId = document.getElementById('comment-post-id').value.trim();
+            const content = document.getElementById('comment-content').value.trim();
+            
+            console.log('Creating comment:', { postId, content });
+            
+            // Ensure result container is visible
+            const resultContainer = document.getElementById('create-comment-result');
+            if (resultContainer) {
+                resultContainer.classList.add('show');
+            }
+            
+            if (!postId) {
+                alert('Post ID is required!');
+                return;
+            }
+            
+            if (!content) {
+                alert('Comment content is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(postId)) {
+                alert('Invalid Post ID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Creating...';
+            button.disabled = true;
+            
+            try {
+                const commentData = {
+                    post_id: postId,
+                    content: content
+                };
+                
+                console.log('Sending request:', commentData);
+                
+                const response = await fetch(`${BASE_URL}/comments.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(commentData)
+                });
+                
+                console.log('Response status:', response.status);
+                
+                let data;
+                try {
+                    const text = await response.text();
+                    console.log('Response text:', text);
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error('Failed to parse JSON:', e);
+                    data = { error: 'Failed to parse response', raw: text || 'No response text' };
+                }
+                
+                console.log('Response data:', data);
+                displayResult('create-comment-result', 'create-comment-status', 'create-comment-response', data, response.status);
+                
+                if (response.ok) {
+                    // Clear form
+                    document.getElementById('comment-post-id').value = '';
+                    document.getElementById('comment-content').value = '';
+                    
+                    // Show helper message to view comments
+                    const resultBox = document.getElementById('create-comment-response');
+                    if (resultBox && data.comment && data.comment.post_id) {
+                        const helperDiv = document.createElement('div');
+                        helperDiv.style.marginTop = '15px';
+                        helperDiv.style.padding = '10px';
+                        helperDiv.style.background = '#e3f2fd';
+                        helperDiv.style.borderRadius = '6px';
+                        helperDiv.innerHTML = `
+                            <strong>💡 Tip:</strong> To view all comments for this post, go to the "Get Comments for Post" section and enter Post ID: <code style="background: white; padding: 2px 6px; border-radius: 3px;">${data.comment.post_id}</code>
+                            <button onclick="document.getElementById('get-comments-post-id').value='${data.comment.post_id}'; getComments({target: document.getElementById('get-comments-btn')}); document.getElementById('get-comments-result').scrollIntoView({behavior: 'smooth'});" style="margin-left: 10px; padding: 5px 10px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">View Comments</button>
+                        `;
+                        resultBox.parentElement.appendChild(helperDiv);
+                    }
+                }
+            } catch (error) {
+                console.error('Error creating comment:', error);
+                displayResult('create-comment-result', 'create-comment-status', 'create-comment-response', { error: error.message, stack: error.stack }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function updateComment(event) {
+            const button = event ? event.target : document.getElementById('update-comment-btn');
+            const originalText = button.textContent;
+            const id = document.getElementById('update-comment-id').value.trim();
+            const content = document.getElementById('update-comment-content').value.trim();
+            
+            if (!id) {
+                alert('Comment ID (UUID) is required!');
+                return;
+            }
+            
+            if (!content) {
+                alert('Comment content is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Updating...';
+            button.disabled = true;
+            
+            try {
+                const updateData = {
+                    content: content
+                };
+                
+                const response = await fetch(`${BASE_URL}/comments.php?id=${encodeURIComponent(id)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(updateData)
+                });
+                
+                let data;
+                try {
+                    const text = await response.text();
+                    data = JSON.parse(text);
+                } catch (e) {
+                    data = { error: 'Failed to parse response', raw: text || 'No response text' };
+                }
+                
+                displayResult('update-comment-result', 'update-comment-status', 'update-comment-response', data, response.status);
+                
+                if (response.ok) {
+                    // Clear form
+                    document.getElementById('update-comment-id').value = '';
+                    document.getElementById('update-comment-content').value = '';
+                }
+            } catch (error) {
+                console.error('Error updating comment:', error);
+                displayResult('update-comment-result', 'update-comment-status', 'update-comment-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function deleteComment(event) {
+            const button = event ? event.target : document.getElementById('delete-comment-btn');
+            const originalText = button.textContent;
+            const id = document.getElementById('delete-comment-id').value.trim();
+            
+            if (!id) {
+                alert('Comment ID (UUID) is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete comment with ID ${id}?`)) {
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Deleting...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/comments.php?id=${encodeURIComponent(id)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                displayResult('delete-comment-result', 'delete-comment-status', 'delete-comment-response', data, response.status);
+            } catch (error) {
+                displayResult('delete-comment-result', 'delete-comment-status', 'delete-comment-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
+
