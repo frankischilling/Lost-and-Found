@@ -189,6 +189,7 @@ project.frankhagan.online/
 │   ├── users.php               # Users API endpoint
 │   ├── comments.php            # Comments API endpoint
 │   ├── upload_photo.php        # Photo upload API endpoint
+│   ├── view_photo.php          # Protected photo viewing endpoint
 │   ├── config.php              # Configuration file
 │   └── ...
 ├── README.md                   # This file
@@ -245,6 +246,13 @@ project.frankhagan.online/
   - Returns array of photo objects with UUIDs, filenames, and URLs
   - Photos are stored in `/uploads/photos/` with UUID as filename
   - Supported formats: JPEG, PNG, GIF, WebP (max 10MB per file)
+
+#### Photo Viewing API (`/view_photo.php`)
+- `GET /view_photo.php?id={uuid}` - View a photo (requires auth)
+  - Requires authentication to access
+  - Validates user has permission to view the photo
+  - Returns the image file with appropriate headers
+  - Photos associated with posts: Only visible if post is approved, user is creator, or user is admin
 
 #### Notifications API (`/notifications.php`)
 - `GET /notifications.php` - Get all notifications for current user (requires auth)
@@ -459,7 +467,8 @@ CREATE TABLE notifications (
 - Photos are stored in `/public_html/uploads/photos/`
 - Each photo is assigned a UUID and stored as `{uuid}.{extension}`
 - Photo UUIDs are stored in the `photo_ids` JSON array field in the `posts` table
-- Photos can be accessed via: `/uploads/photos/{uuid}.{ext}`
+- **Photos require authentication** - Access via protected endpoint: `/view_photo.php?id={uuid}`
+- Direct access to `/uploads/photos/` is blocked for security
 
 ### Photo Upload Process
 1. **Upload photos** using `POST /upload_photo.php` with FormData
@@ -481,13 +490,15 @@ CREATE TABLE notifications (
       "uuid": "550e8400-e29b-41d4-a716-446655440000",
       "original_name": "photo1.jpg",
       "filename": "550e8400-e29b-41d4-a716-446655440000.jpg",
-      "url": "/uploads/photos/550e8400-e29b-41d4-a716-446655440000.jpg",
+      "url": "/view_photo.php?id=550e8400-e29b-41d4-a716-446655440000",
       "size": 245678,
       "type": "image/jpeg"
     }
   ]
 }
 ```
+
+**Note**: Photo URLs point to the protected `/view_photo.php` endpoint which requires authentication. Direct access to `/uploads/photos/` is blocked.
 
 ## Notifications System
 
@@ -560,12 +571,32 @@ Use the built-in API tester at `/api-test.html` to:
 
 ## Security Features
 
-- **Input Validation** - All inputs are validated and sanitized
-- **SQL Injection Protection** - Prepared statements with PDO
-- **XSS Prevention** - Output escaping
-- **CSRF Protection** - Session-based token validation
-- **Role-Based Access Control** - Admin and user permissions
-- **Secure Sessions** - HTTP-only, secure cookies
+### Authentication & Authorization
+- **Google OAuth2 Authentication** - Secure login with @wit.edu email addresses only
+- **Session Management** - Secure, HTTP-only cookies with SameSite protection
+- **Role-Based Access Control (RBAC)** - Admin and user permissions with granular access control
+- **Protected Endpoints** - All API endpoints require authentication except health checks
+
+### Data Protection
+- **Input Validation** - All inputs are validated and sanitized before processing
+- **SQL Injection Protection** - Prepared statements with PDO for all database queries
+- **XSS Prevention** - Output escaping and content sanitization
+- **CSRF Protection** - Session-based token validation for state-changing operations
+
+### Photo Security
+- **Protected Photo Access** - All photos require authentication via `/view_photo.php` endpoint
+- **Direct Access Blocked** - Direct access to `/uploads/` and `/uploads/photos/` directories is blocked via `.htaccess` (Apache) or server configuration (Nginx)
+- **Permission-Based Viewing** - Photos associated with posts are only visible if:
+  - Post is approved (visible to all authenticated users), OR
+  - User is the post creator, OR
+  - User is an admin
+- **UUID-Based Filenames** - Photos are stored with UUID filenames to prevent enumeration attacks
+
+### API Security
+- **CORS Configuration** - Controlled cross-origin resource sharing
+- **Method Validation** - Only allowed HTTP methods are accepted
+- **UUID Validation** - All UUID parameters are validated before processing
+- **Error Handling** - Generic error messages prevent information leakage
 
 ## Troubleshooting
 
