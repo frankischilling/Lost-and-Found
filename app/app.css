@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+    --font-sans:
+        "IBM Plex Sans", "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+        "Segoe UI Symbol", "Noto Color Emoji";
+
+    --color-wentworth-gold--2: #fbaa19;
+    --color-wentworth-gold--1: #fdb913;
+    --color-wentworth-gold: #ffcb05;
+    --color-wentworth-gold-1: #ffdb00;
+    --color-wentworth-gold-2: #ffe600;
+
+    --color-wentworth-black: #000000;
+    --color-wentworth-black-1: #151719;
+    --color-wentworth-black-2: #231f20;
+    --color-wentworth-black-3: #2a2e33;
+    --color-wentworth-black-4: #231f20;
+
+    /* Brand accent palettes (shades darker and lighter) */
+    /* Red Accent */
+    --color-red-accent--2: #541a1a;
+    --color-red-accent--1: #942e2e;
+    --color-red-accent: #d44242;
+    --color-red-accent-1: #ba3a3a;
+    --color-red-accent-2: #e04646;
+
+    /* Blue Accent */
+    --color-blue-accent--2: #073752;
+    --color-blue-accent--1: #0a5178;
+    --color-blue-accent: #09496b;
+    --color-blue-accent-1: #0f7cb8;
+    --color-blue-accent-2: #14a8f7;
+
+    /* Teal Accent */
+    --color-teal-accent--2: #506b6e;
+    --color-teal-accent--1: #6c9094;
+    --color-teal-accent: #7fa9ae;
+    --color-teal-accent-1: #88b5ba;
+    --color-teal-accent-2: #bde5ef;
+
+    /* Neutral Dark */
+    --color-neutral-dark--2: #212b33;
+    --color-neutral-dark--1: #28333d;
+    --color-neutral-dark: #202931;
+    --color-neutral-dark-1: #51697d;
+    --color-neutral-dark-2: #7b9ebd;
+
+    /* Neutral Light */
+    --color-neutral-light--2: #62666e;
+    --color-neutral-light--1: #9aa1ad;
+    --color-neutral-light: #d4dded;
+    --color-neutral-light-1: #bcc5d4;
+    --color-neutral-light-2: #dee8fa;
+}
+
+html,
+body {
+    @apply bg-neutral-light dark:bg-wentworth-black-1;
+    @apply text-wentworth-black dark:text-neutral-light;
+    @apply font-sans;
+    @apply antialiased;
+
+    @media (prefers-color-scheme: dark) {
+        color-scheme: dark;
+    }
+}
