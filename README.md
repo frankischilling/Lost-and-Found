@@ -281,8 +281,7 @@ See the [LICENSE](LICENSE) file for details.
 ## Contact
 
 For questions or support:
-- **Project Maintainer**: Francis Hagan
-- **Email**: haganf@wit.edu
+- **Project Maintainer**: frankischilling
 
 ## Acknowledgments
 
