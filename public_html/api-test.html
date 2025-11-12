@@ -402,9 +402,10 @@
                 <input type="text" id="post-tags" placeholder="e.g., wallet, brown, leather (optional)">
             </div>
             <div class="form-group">
-                <label>Photo IDs (comma-separated):</label>
-                <input type="text" id="post-photo-ids" placeholder="e.g., photo1.jpg, photo2.jpg (optional)">
-                <small style="display: block; margin-top: 5px; color: #666;">Enter photo identifiers separated by commas</small>
+                <label>Photos:</label>
+                <input type="file" id="post-photos" multiple accept="image/*" style="padding: 8px;">
+                <small style="display: block; margin-top: 5px; color: #666;">Select one or more photos to upload. Photos will be assigned UUIDs automatically.</small>
+                <div id="post-photos-preview" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
             </div>
             <div class="endpoint-url">POST /posts.php</div>
             <button onclick="createPost()">Create Post</button>
@@ -464,9 +465,10 @@
                 <input type="text" id="update-tags" placeholder="e.g., wallet, brown, leather (optional)">
             </div>
             <div class="form-group">
-                <label>Photo IDs (comma-separated):</label>
-                <input type="text" id="update-photo-ids" placeholder="e.g., photo1.jpg, photo2.jpg (optional)">
-                <small style="display: block; margin-top: 5px; color: #666;">Enter photo identifiers separated by commas</small>
+                <label>Add New Photos:</label>
+                <input type="file" id="update-photos" multiple accept="image/*" style="padding: 8px;">
+                <small style="display: block; margin-top: 5px; color: #666;">Select photos to add. New photos will be assigned UUIDs automatically. Existing photos will be preserved.</small>
+                <div id="update-photos-preview" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
             </div>
             <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
                 <label>Admin Approval Status <span style="color: #856404;">(Admin Only)</span>:</label>
@@ -685,6 +687,14 @@
             document.getElementById('get-comment-btn').addEventListener('click', getComment);
             document.getElementById('update-comment-btn').addEventListener('click', updateComment);
             document.getElementById('delete-comment-btn').addEventListener('click', deleteComment);
+            
+            // Add photo preview functionality
+            document.getElementById('post-photos').addEventListener('change', function(e) {
+                previewPhotos(e.target.files, 'post-photos-preview');
+            });
+            document.getElementById('update-photos').addEventListener('change', function(e) {
+                previewPhotos(e.target.files, 'update-photos-preview');
+            });
             
             // Check authentication status on load
             checkSession();
@@ -968,6 +978,76 @@
             }
         }
         
+        // Preview selected photos
+        function previewPhotos(files, previewContainerId) {
+            const previewContainer = document.getElementById(previewContainerId);
+            previewContainer.innerHTML = '';
+            
+            if (!files || files.length === 0) {
+                return;
+            }
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (!file.type.startsWith('image/')) {
+                    continue;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.style.width = '100px';
+                    img.style.height = '100px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '6px';
+                    img.style.border = '2px solid #ddd';
+                    img.style.margin = '5px';
+                    img.title = file.name;
+                    previewContainer.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // Upload photos and return UUIDs
+        async function uploadPhotos(photoFiles, postId = null) {
+            if (!photoFiles || photoFiles.length === 0) {
+                return [];
+            }
+            
+            const formData = new FormData();
+            for (let i = 0; i < photoFiles.length; i++) {
+                formData.append('photos[]', photoFiles[i]);
+            }
+            if (postId) {
+                formData.append('post_id', postId);
+            }
+            
+            try {
+                const response = await fetch(`${BASE_URL}/upload_photo.php`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to upload photos');
+                }
+                
+                // Extract UUIDs from uploaded photos
+                if (data.photos && Array.isArray(data.photos)) {
+                    return data.photos.map(photo => photo.uuid);
+                }
+                return [];
+            } catch (error) {
+                console.error('Photo upload error:', error);
+                throw error;
+            }
+        }
+        
         async function createPost() {
             const button = event.target;
             const originalText = button.textContent;
@@ -979,7 +1059,7 @@
             const currentLocation = document.getElementById('post-current-location').value.trim();
             const dateFound = document.getElementById('post-date-found').value;
             const tagsInput = document.getElementById('post-tags').value.trim();
-            const photoIdsInput = document.getElementById('post-photo-ids').value.trim();
+            const photoFiles = document.getElementById('post-photos').files;
             
             if (!postType) {
                 alert('Post type is required!');
@@ -997,16 +1077,28 @@
                 tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
             }
             
-            // Parse photo IDs from comma-separated string
-            let photoIds = null;
-            if (photoIdsInput) {
-                photoIds = photoIdsInput.split(',').map(id => id.trim()).filter(id => id.length > 0);
-            }
-            
-            button.innerHTML = '<span class="loading"></span>Creating...';
+            button.innerHTML = '<span class="loading"></span>Uploading photos...';
             button.disabled = true;
             
             try {
+                // Upload photos first if any are selected
+                let photoIds = [];
+                if (photoFiles && photoFiles.length > 0) {
+                    try {
+                        photoIds = await uploadPhotos(photoFiles);
+                        if (photoIds.length === 0) {
+                            alert('Warning: No photos were uploaded successfully.');
+                        }
+                    } catch (error) {
+                        alert('Error uploading photos: ' + error.message);
+                        button.textContent = originalText;
+                        button.disabled = false;
+                        return;
+                    }
+                }
+                
+                button.innerHTML = '<span class="loading"></span>Creating...';
+                
                 const postData = {
                     post_type: postType,
                     item_name: itemName,
@@ -1016,7 +1108,7 @@
                     current_location: currentLocation || null,
                     date_found: dateFound || null,
                     tags: tags,
-                    photo_ids: photoIds
+                    photo_ids: photoIds.length > 0 ? photoIds : null
                 };
                 
                 const response = await fetch(`${BASE_URL}/posts.php`, {
@@ -1024,6 +1116,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
+                    credentials: 'include',
                     body: JSON.stringify(postData)
                 });
                 const data = await response.json();
@@ -1039,7 +1132,8 @@
                     document.getElementById('post-current-location').value = '';
                     document.getElementById('post-date-found').value = '';
                     document.getElementById('post-tags').value = '';
-                    document.getElementById('post-photo-ids').value = '';
+                    document.getElementById('post-photos').value = '';
+                    document.getElementById('post-photos-preview').innerHTML = '';
                     
                     // Reload posts dropdowns to include the new post
                     loadPostsForDropdowns();
@@ -1064,7 +1158,7 @@
             const currentLocation = document.getElementById('update-current-location').value.trim();
             const dateFound = document.getElementById('update-date-found').value;
             const tagsInput = document.getElementById('update-tags').value.trim();
-            const photoIdsInput = document.getElementById('update-photo-ids').value.trim();
+            const photoFiles = document.getElementById('update-photos').files;
             const approvalStatus = document.getElementById('update-approval-status').value;
             
             if (!id) {
@@ -1090,31 +1184,82 @@
             if (tagsInput) {
                 updateData.tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
             }
-            if (photoIdsInput) {
-                updateData.photo_ids = photoIdsInput.split(',').map(id => id.trim()).filter(id => id.length > 0);
-            }
             if (approvalStatus) {
                 updateData.admin_approval_status = approvalStatus;
             }
             
-            if (Object.keys(updateData).length === 0) {
-                alert('Please provide at least one field to update!');
-                return;
-            }
-            
-            button.innerHTML = '<span class="loading"></span>Updating...';
+            button.innerHTML = '<span class="loading"></span>Uploading photos...';
             button.disabled = true;
             
             try {
+                // Upload new photos if any are selected
+                let newPhotoIds = [];
+                if (photoFiles && photoFiles.length > 0) {
+                    try {
+                        newPhotoIds = await uploadPhotos(photoFiles, id);
+                        if (newPhotoIds.length === 0) {
+                            alert('Warning: No photos were uploaded successfully.');
+                        }
+                    } catch (error) {
+                        alert('Error uploading photos: ' + error.message);
+                        button.textContent = originalText;
+                        button.disabled = false;
+                        return;
+                    }
+                }
+                
+                // If new photos were uploaded, get existing photos and merge
+                if (newPhotoIds.length > 0) {
+                    try {
+                        // Get current post to retrieve existing photo_ids
+                        const getResponse = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}`);
+                        const postData = await getResponse.json();
+                        
+                        let existingPhotoIds = [];
+                        if (postData.photo_ids && Array.isArray(postData.photo_ids)) {
+                            existingPhotoIds = postData.photo_ids;
+                        } else if (postData.photo_ids && typeof postData.photo_ids === 'string') {
+                            try {
+                                existingPhotoIds = JSON.parse(postData.photo_ids);
+                            } catch (e) {
+                                existingPhotoIds = [];
+                            }
+                        }
+                        
+                        // Merge existing and new photo IDs
+                        updateData.photo_ids = [...existingPhotoIds, ...newPhotoIds];
+                    } catch (error) {
+                        console.error('Error fetching existing photos:', error);
+                        // If we can't get existing photos, just use the new ones
+                        updateData.photo_ids = newPhotoIds;
+                    }
+                }
+                
+                if (Object.keys(updateData).length === 0) {
+                    alert('Please provide at least one field to update!');
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    return;
+                }
+                
+                button.innerHTML = '<span class="loading"></span>Updating...';
+                
                 const response = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                     },
+                    credentials: 'include',
                     body: JSON.stringify(updateData)
                 });
                 const data = await response.json();
                 displayResult('update-post-result', 'update-post-status', 'update-post-response', data, response.status);
+                
+                if (response.ok && photoFiles && photoFiles.length > 0) {
+                    // Clear photo input after successful update
+                    document.getElementById('update-photos').value = '';
+                    document.getElementById('update-photos-preview').innerHTML = '';
+                }
             } catch (error) {
                 displayResult('update-post-result', 'update-post-status', 'update-post-response', { error: error.message }, 500);
             } finally {
