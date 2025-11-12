@@ -512,6 +512,48 @@
             </div>
         </div>
         
+        <!-- Follow/Unfollow Post -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Follow/Unfollow Post</span>
+                <span class="method-badge method-post">POST</span>
+            </div>
+            <div class="form-group">
+                <label>Select Post:</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="follow-post-select" onchange="document.getElementById('follow-post-id').value = this.value; updateFollowUrl();" style="flex: 1;">
+                        <option value="">-- Select a post --</option>
+                    </select>
+                    <button onclick="loadPostsForDropdowns()" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;" title="Refresh posts list">🔄</button>
+                </div>
+                <small style="display: block; margin-top: 5px; color: #666;">Or enter Post UUID manually below</small>
+            </div>
+            <div class="form-group">
+                <label>Post ID (UUID):</label>
+                <input type="text" id="follow-post-id" placeholder="Enter Post UUID or select above" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;" oninput="updateFollowUrl();">
+            </div>
+            <div class="form-group">
+                <label>Action:</label>
+                <select id="follow-action" onchange="updateFollowUrl();">
+                    <option value="follow">Follow Post</option>
+                    <option value="unfollow">Unfollow Post</option>
+                </select>
+                <small style="display: block; margin-top: 5px; color: #666;">Follow a post to track if it's your lost/found item</small>
+            </div>
+            <div class="endpoint-url" id="follow-post-url"></div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="followPost()" id="follow-post-btn">Follow/Unfollow Post</button>
+                <button onclick="checkFollowStatus()" style="background: #f0f0f0; color: #666;">Check Follow Status</button>
+            </div>
+            <div class="result-container" id="follow-post-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="follow-post-status"></span>
+                </div>
+                <div class="result-box" id="follow-post-response"></div>
+            </div>
+        </div>
+        
         <!-- Get Comments for Post -->
         <div class="endpoint-section">
             <div class="endpoint-header">
@@ -666,6 +708,7 @@
             updateGetPostUrl();
             updateUpdatePostUrl();
             updateDeletePostUrl();
+            updateFollowUrl();
             updateGetCommentsUrl();
             updateGetCommentUrl();
             updateUpdateCommentUrl();
@@ -676,6 +719,8 @@
             document.getElementById('get-post-id').addEventListener('input', updateGetPostUrl);
             document.getElementById('update-post-id').addEventListener('input', updateUpdatePostUrl);
             document.getElementById('delete-post-id').addEventListener('input', updateDeletePostUrl);
+            document.getElementById('follow-post-id').addEventListener('input', updateFollowUrl);
+            document.getElementById('follow-action').addEventListener('change', updateFollowUrl);
             document.getElementById('get-comments-post-id').addEventListener('input', updateGetCommentsUrl);
             document.getElementById('get-comment-id').addEventListener('input', updateGetCommentUrl);
             document.getElementById('update-comment-id').addEventListener('input', updateUpdateCommentUrl);
@@ -715,7 +760,8 @@
                     // Get all post select dropdowns
                     const selects = [
                         'comment-post-select',
-                        'get-comments-post-select'
+                        'get-comments-post-select',
+                        'follow-post-select'
                     ];
                     
                     selects.forEach(selectId => {
@@ -1300,6 +1346,157 @@
                 displayResult('delete-post-result', 'delete-post-status', 'delete-post-response', data, response.status);
             } catch (error) {
                 displayResult('delete-post-result', 'delete-post-status', 'delete-post-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        function updateFollowUrl() {
+            const id = document.getElementById('follow-post-id').value.trim();
+            const action = document.getElementById('follow-action').value;
+            if (id && action) {
+                document.getElementById('follow-post-url').textContent = `POST ${BASE_URL}/posts.php?id=${encodeURIComponent(id)}&action=${action}`;
+            } else {
+                document.getElementById('follow-post-url').textContent = `POST ${BASE_URL}/posts.php?id={uuid}&action={follow|unfollow}`;
+            }
+        }
+        
+        async function followPost() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('follow-post-id').value.trim();
+            const action = document.getElementById('follow-action').value;
+            
+            if (!id) {
+                alert('Post ID (UUID) is required!');
+                return;
+            }
+            
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            if (!action || !['follow', 'unfollow'].includes(action)) {
+                alert('Please select an action (Follow or Unfollow)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Processing...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}&action=${action}`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                displayResult('follow-post-result', 'follow-post-status', 'follow-post-response', data, response.status);
+                
+                // Update action dropdown based on response
+                if (response.ok && data.is_following !== undefined) {
+                    if (data.is_following) {
+                        document.getElementById('follow-action').value = 'unfollow';
+                    } else {
+                        document.getElementById('follow-action').value = 'follow';
+                    }
+                    updateFollowUrl();
+                }
+            } catch (error) {
+                displayResult('follow-post-result', 'follow-post-status', 'follow-post-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function checkFollowStatus() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('follow-post-id').value.trim();
+            
+            if (!id) {
+                alert('Post ID (UUID) is required!');
+                return;
+            }
+            
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Checking...';
+            button.disabled = true;
+            
+            try {
+                // Get post to check follower_ids
+                const response = await fetch(`${BASE_URL}/posts.php?id=${encodeURIComponent(id)}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    displayResult('follow-post-result', 'follow-post-status', 'follow-post-response', { 
+                        status: 'error', 
+                        message: 'Could not retrieve post. Status: ' + response.status
+                    }, response.status);
+                    return;
+                }
+                
+                const post = await response.json();
+                
+                // Get current user session
+                const sessionResponse = await fetch(`${BASE_URL}/auth/session.php`, {
+                    credentials: 'include'
+                });
+                const sessionData = await sessionResponse.json();
+                
+                let isFollowing = false;
+                let followerCount = 0;
+                let followerIds = [];
+                
+                // Handle follower_ids - it can be null, undefined, or an array
+                if (post.follower_ids !== null && post.follower_ids !== undefined) {
+                    if (Array.isArray(post.follower_ids)) {
+                        followerIds = post.follower_ids;
+                        followerCount = followerIds.length;
+                        
+                        // Check if current user is following
+                        if (sessionData.logged_in && sessionData.user && sessionData.user.id) {
+                            const userId = sessionData.user.id.toLowerCase().trim();
+                            isFollowing = followerIds.some(fid => {
+                                if (fid && typeof fid === 'string') {
+                                    return fid.toLowerCase().trim() === userId;
+                                }
+                                return false;
+                            });
+                        }
+                    }
+                }
+                
+                const statusData = {
+                    status: 'success',
+                    post_id: id,
+                    is_following: isFollowing,
+                    follower_count: followerCount,
+                    follower_ids: followerIds.length > 0 ? followerIds : null
+                };
+                
+                displayResult('follow-post-result', 'follow-post-status', 'follow-post-response', statusData, 200);
+                
+                // Update action dropdown
+                if (isFollowing) {
+                    document.getElementById('follow-action').value = 'unfollow';
+                } else {
+                    document.getElementById('follow-action').value = 'follow';
+                }
+                updateFollowUrl();
+            } catch (error) {
+                displayResult('follow-post-result', 'follow-post-status', 'follow-post-response', { error: error.message }, 500);
             } finally {
                 button.textContent = originalText;
                 button.disabled = false;

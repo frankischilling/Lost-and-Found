@@ -91,6 +91,10 @@ try {
     $method = $_SERVER['REQUEST_METHOD'];
     $id = isset($_GET['id']) ? trim($_GET['id']) : null;
     $postType = isset($_GET['type']) ? $_GET['type'] : null; // Filter by 'lost' or 'found'
+    $action = isset($_GET['action']) ? strtolower(trim($_GET['action'])) : null; // 'follow' or 'unfollow'
+    if ($action === '') {
+        $action = null; // Treat empty string as null
+    }
     
     switch ($method) {
         case 'GET':
@@ -107,6 +111,17 @@ try {
                     }
                     if (isset($post['photo_ids']) && $post['photo_ids']) {
                         $post['photo_ids'] = json_decode($post['photo_ids'], true);
+                    }
+                    // Handle follower_ids - can be null, empty, or array
+                    if (isset($post['follower_ids'])) {
+                        if ($post['follower_ids'] !== null && $post['follower_ids'] !== '') {
+                            $decoded = json_decode($post['follower_ids'], true);
+                            $post['follower_ids'] = is_array($decoded) ? $decoded : [];
+                        } else {
+                            $post['follower_ids'] = [];
+                        }
+                    } else {
+                        $post['follower_ids'] = [];
                     }
                     http_response_code(200);
                     echo json_encode($post);
@@ -135,6 +150,17 @@ try {
                     if (isset($post['photo_ids']) && $post['photo_ids']) {
                         $post['photo_ids'] = json_decode($post['photo_ids'], true);
                     }
+                    // Handle follower_ids - can be null, empty, or array
+                    if (isset($post['follower_ids'])) {
+                        if ($post['follower_ids'] !== null && $post['follower_ids'] !== '') {
+                            $decoded = json_decode($post['follower_ids'], true);
+                            $post['follower_ids'] = is_array($decoded) ? $decoded : [];
+                        } else {
+                            $post['follower_ids'] = [];
+                        }
+                    } else {
+                        $post['follower_ids'] = [];
+                    }
                 }
                 
                 http_response_code(200);
@@ -147,6 +173,131 @@ try {
             break;
             
         case 'POST':
+            // Handle follow/unfollow actions first (before post creation)
+            // If an ID is provided with POST, it must be a follow/unfollow action
+            if ($id !== null && isValidUUID($id)) {
+                // This must be a follow/unfollow action
+                if ($action !== 'follow' && $action !== 'unfollow') {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Invalid action. When providing a post ID, action must be "follow" or "unfollow". Use POST without ID to create a new post.'
+                    ]);
+                    exit;
+                }
+            }
+            
+            // Handle follow/unfollow actions
+            if ($action === 'follow' || $action === 'unfollow') {
+                // Require authentication
+                $userId = requireAuth();
+                if (!$userId) {
+                    exit; // requireAuth already sent response
+                }
+                
+                if ($id === null || !isValidUUID($id)) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Valid Post ID (UUID) is required'
+                    ]);
+                    exit;
+                }
+                
+                // Check if post exists
+                $checkStmt = $pdo->prepare('SELECT id, follower_ids FROM posts WHERE id = ?');
+                $checkStmt->execute([$id]);
+                $existingPost = $checkStmt->fetch();
+                
+                if (!$existingPost) {
+                    http_response_code(404);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Post not found'
+                    ]);
+                    exit;
+                }
+                
+                // Get current follower_ids
+                $followerIds = [];
+                if (isset($existingPost['follower_ids']) && $existingPost['follower_ids']) {
+                    $decoded = json_decode($existingPost['follower_ids'], true);
+                    if (is_array($decoded)) {
+                        $followerIds = $decoded;
+                    }
+                }
+                
+                // Normalize user ID for comparison
+                $userIdNormalized = strtolower(trim($userId));
+                $isFollowing = false;
+                
+                // Check if user is already following
+                foreach ($followerIds as $followerId) {
+                    if (strtolower(trim($followerId)) === $userIdNormalized) {
+                        $isFollowing = true;
+                        break;
+                    }
+                }
+                
+                if ($action === 'follow') {
+                    if ($isFollowing) {
+                        http_response_code(200);
+                        echo json_encode([
+                            'status' => 'success',
+                            'message' => 'You are already following this post',
+                            'is_following' => true
+                        ]);
+                        exit;
+                    }
+                    
+                    // Add user to followers
+                    $followerIds[] = $userId;
+                    $followerIdsJson = json_encode(array_values(array_unique($followerIds)));
+                    
+                    $stmt = $pdo->prepare('UPDATE posts SET follower_ids = ?, updated_at = NOW() WHERE id = ?');
+                    $stmt->execute([$followerIdsJson, $id]);
+                    
+                    http_response_code(200);
+                    echo json_encode([
+                        'status' => 'success',
+                        'message' => 'Successfully followed post',
+                        'is_following' => true,
+                        'follower_count' => count($followerIds)
+                    ]);
+                } else if ($action === 'unfollow') {
+                    if (!$isFollowing) {
+                        http_response_code(200);
+                        echo json_encode([
+                            'status' => 'success',
+                            'message' => 'You are not following this post',
+                            'is_following' => false
+                        ]);
+                        exit;
+                    }
+                    
+                    // Remove user from followers
+                    $followerIds = array_filter($followerIds, function($fid) use ($userIdNormalized) {
+                        return strtolower(trim($fid)) !== $userIdNormalized;
+                    });
+                    $followerIds = array_values($followerIds); // Re-index array
+                    
+                    $followerIdsJson = !empty($followerIds) ? json_encode($followerIds) : null;
+                    
+                    $stmt = $pdo->prepare('UPDATE posts SET follower_ids = ?, updated_at = NOW() WHERE id = ?');
+                    $stmt->execute([$followerIdsJson, $id]);
+                    
+                    http_response_code(200);
+                    echo json_encode([
+                        'status' => 'success',
+                        'message' => 'Successfully unfollowed post',
+                        'is_following' => false,
+                        'follower_count' => count($followerIds)
+                    ]);
+                }
+                exit;
+            }
+            
+            // If not follow/unfollow, continue with post creation logic
             // Require authentication for creating posts
             $userId = requireAuth();
             if (!$userId) {
