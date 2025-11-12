@@ -1,0 +1,14 @@
+{
+    "name": "project/google-oauth2",
+    "description": "Google OAuth2 integration",
+    "require": {
+        "php": ">=8.0",
+        "google/apiclient": "^2.15"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
+
