@@ -27,6 +27,7 @@ A full-stack web application for managing lost and found items at Wentworth Inst
 - **Photo Support** - Attach multiple photos to posts
 - **Tagging System** - Add tags to posts for better searchability
 - **Follow Posts** - Follow posts to track if they match your lost/found items
+- **Real-time Notifications** - Receive notifications when posts you created or are following are updated, approved, or receive comments
 
 ### Admin Features
 - **Post Moderation** - Approve, reject, or keep posts pending
@@ -135,6 +136,7 @@ mysql -u your_username -p lostandfound < public_html/migrations/add_post_fields.
 mysql -u your_username -p lostandfound < public_html/migrations/add_user_admin_field.sql
 mysql -u your_username -p lostandfound < public_html/migrations/add_comments_table.sql
 mysql -u your_username -p lostandfound < public_html/migrations/add_follower_ids.sql
+mysql -u your_username -p lostandfound < public_html/migrations/add_notifications_table.sql
 ```
 
 ### 6. Set Up Admin User
@@ -178,7 +180,9 @@ project.frankhagan.online/
 │   │   ├── add_post_fields.sql
 │   │   ├── add_user_admin_field.sql
 │   │   ├── add_comments_table.sql
-│   │   └── add_follower_ids.sql
+│   │   ├── add_follower_ids.sql
+│   │   └── add_notifications_table.sql
+│   ├── notifications.php       # Notifications API endpoint
 │   ├── uploads/                 # Uploaded files directory
 │   │   └── photos/              # Photo uploads (UUID-based filenames)
 │   ├── posts.php               # Posts API endpoint
@@ -241,6 +245,14 @@ project.frankhagan.online/
   - Returns array of photo objects with UUIDs, filenames, and URLs
   - Photos are stored in `/uploads/photos/` with UUID as filename
   - Supported formats: JPEG, PNG, GIF, WebP (max 10MB per file)
+
+#### Notifications API (`/notifications.php`)
+- `GET /notifications.php` - Get all notifications for current user (requires auth)
+  - Optional: `?unread_only=true` to filter only unread notifications
+  - Returns array of notifications with unread count
+- `GET /notifications.php?id={uuid}` - Get single notification (requires auth)
+- `PUT /notifications.php?id={uuid}` - Mark notification as read/unread (requires auth)
+  - Body: `{"is_read": true}` or `{"is_read": false}`
 
 #### Authentication
 - `GET /auth/session.php` - Check current session
@@ -403,8 +415,36 @@ The application uses Google OAuth2 for authentication. Only users with @wit.edu 
 - **users** - User accounts and authentication
 - **posts** - Lost and found item posts (includes `photo_ids` and `follower_ids` JSON fields)
 - **comments** - Comments on posts
+- **notifications** - User notifications for post updates, approvals, and comments
 
 See the API documentation for complete schema details.
+
+#### Notifications Table Schema
+```sql
+CREATE TABLE notifications (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    post_id CHAR(36) NULL,
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_post_id (post_id),
+    INDEX idx_is_read (is_read),
+    INDEX idx_created_at (created_at),
+    INDEX idx_user_read (user_id, is_read)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Notification Types:**
+- `post_created` - User created a post (approved or pending)
+- `post_approved` - User's post was approved by admin
+- `post_rejected` - User's post was rejected by admin
+- `post_updated` - Post user is following was updated
+- `post_deleted` - Post user is following was deleted
+- `comment_added` - Comment added to post user created or is following
 
 ### Post Followers
 - Posts include a `follower_ids` JSON array field containing UUIDs of users who are following the post
@@ -444,6 +484,67 @@ See the API documentation for complete schema details.
       "url": "/uploads/photos/550e8400-e29b-41d4-a716-446655440000.jpg",
       "size": 245678,
       "type": "image/jpeg"
+    }
+  ]
+}
+```
+
+## Notifications System
+
+### Overview
+The notification system provides real-time updates to users about posts they created or are following. Notifications are automatically created when specific events occur and can be retrieved via the Notifications API.
+
+### When Notifications Are Created
+
+1. **Post Created**
+   - **Recipient**: Post creator
+   - **Type**: `post_created`
+   - **Message**: Confirms post creation and approval status (approved for admins, pending for regular users)
+
+2. **Post Approved/Rejected**
+   - **Recipient**: Post creator
+   - **Type**: `post_approved` or `post_rejected`
+   - **Message**: Notifies when admin changes post approval status
+
+3. **Post Updated**
+   - **Recipients**: Post creator and all followers (except the user who made the update)
+   - **Type**: `post_updated`
+   - **Message**: Alerts users when a post they're tracking has been modified
+
+4. **Post Deleted**
+   - **Recipients**: All followers (except the user who deleted it)
+   - **Type**: `post_deleted`
+   - **Message**: Notifies followers when a post they were following has been deleted
+
+5. **Comment Added**
+   - **Recipients**: Post creator and all followers (except the commenter)
+   - **Type**: `comment_added`
+   - **Message**: Includes commenter's name, post item name, and comment preview (truncated to 100 characters)
+
+### Notification Features
+
+- **Real-time Updates**: Notifications appear automatically in the API tester interface
+- **Auto-dismiss**: Notifications automatically mark as read and disappear after 8 seconds
+- **Manual Dismissal**: Users can click notifications or the close button to mark as read
+- **Unread Tracking**: API provides unread count for efficient polling
+- **Color-coded**: Different notification types have distinct visual indicators
+
+### Notification Example Response
+```json
+{
+  "status": "success",
+  "count": 5,
+  "unread_count": 2,
+  "notifications": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "user_id": "73aef27e-ff15-4457-bc7d-eb9bd7307a08",
+      "post_id": "7c923cf9-e6b4-42d3-8f4d-e33446e582e6",
+      "type": "comment_added",
+      "title": "New Comment on Your Post",
+      "message": "John Doe commented on your post \"Lost Wallet\": \"I think I found it!\"",
+      "is_read": false,
+      "created_at": "2025-01-15 10:30:00"
     }
   ]
 }
