@@ -197,6 +197,133 @@
             to { transform: rotate(360deg); }
         }
         
+        /* Notification Styles */
+        #notification-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .notification {
+            background: white;
+            border-radius: 8px;
+            padding: 15px 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideInRight 0.3s ease-out;
+            border-left: 4px solid #667eea;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .notification:hover {
+            transform: translateX(-5px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+        }
+        
+        .notification.post_approved {
+            border-left-color: #10b981;
+        }
+        
+        .notification.post_rejected {
+            border-left-color: #ef4444;
+        }
+        
+        .notification.post_created {
+            border-left-color: #3b82f6;
+        }
+        
+        .notification.post_updated {
+            border-left-color: #f59e0b;
+        }
+        
+        .notification.post_deleted {
+            border-left-color: #6b7280;
+        }
+        
+        .notification.comment_added {
+            border-left-color: #8b5cf6;
+        }
+        
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        
+        .notification-title {
+            font-weight: 600;
+            font-size: 16px;
+            color: #1f2937;
+            margin: 0;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #9ca3af;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background 0.2s, color 0.2s;
+        }
+        
+        .notification-close:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .notification-message {
+            font-size: 14px;
+            color: #4b5563;
+            line-height: 1.5;
+            margin: 0;
+        }
+        
+        .notification-time {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 8px;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        .notification.removing {
+            animation: slideOutRight 0.3s ease-out forwards;
+        }
+        
         .quick-actions {
             display: flex;
             gap: 10px;
@@ -1769,6 +1896,173 @@
                 button.disabled = false;
             }
         }
+    </script>
+    
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+    
+    <script>
+        // Notification System
+        // BASE_URL is already defined in the main script above
+        let lastNotificationCheck = null;
+        let notificationCheckInterval = null;
+        let displayedNotificationIds = new Set();
+        
+        // Format time ago
+        function formatTimeAgo(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSecs = Math.floor(diffMs / 1000);
+            const diffMins = Math.floor(diffSecs / 60);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+            
+            if (diffSecs < 60) return 'just now';
+            if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+            if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+            if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+            return date.toLocaleDateString();
+        }
+        
+        // Display a notification
+        function displayNotification(notification) {
+            // Skip if already displayed
+            if (displayedNotificationIds.has(notification.id)) {
+                return;
+            }
+            
+            displayedNotificationIds.add(notification.id);
+            
+            const container = document.getElementById('notification-container');
+            const notificationEl = document.createElement('div');
+            notificationEl.className = `notification ${notification.type}`;
+            notificationEl.dataset.notificationId = notification.id;
+            
+            notificationEl.innerHTML = `
+                <div class="notification-header">
+                    <h4 class="notification-title">${escapeHtml(notification.title)}</h4>
+                    <button class="notification-close" onclick="markNotificationAsReadAndRemove('${notification.id}')" aria-label="Close">&times;</button>
+                </div>
+                <p class="notification-message">${escapeHtml(notification.message)}</p>
+                <div class="notification-time">${formatTimeAgo(notification.created_at)}</div>
+            `;
+            
+            // Auto-remove after 8 seconds (mark as read first)
+            setTimeout(() => {
+                markNotificationAsRead(notification.id);
+                removeNotification(notification.id);
+            }, 8000);
+            
+            container.appendChild(notificationEl);
+            
+            // Click to mark as read and remove
+            notificationEl.addEventListener('click', () => {
+                markNotificationAsRead(notification.id);
+                removeNotification(notification.id);
+            });
+        }
+        
+        // Remove notification (global for onclick handler)
+        window.removeNotification = function(notificationId) {
+            const notificationEl = document.querySelector(`[data-notification-id="${notificationId}"]`);
+            if (notificationEl) {
+                notificationEl.classList.add('removing');
+                setTimeout(() => {
+                    notificationEl.remove();
+                    displayedNotificationIds.delete(notificationId);
+                }, 300);
+            }
+        };
+        
+        // Mark as read and remove (global for close button)
+        window.markNotificationAsReadAndRemove = async function(notificationId) {
+            await markNotificationAsRead(notificationId);
+            removeNotification(notificationId);
+        };
+        
+        // Mark notification as read
+        async function markNotificationAsRead(notificationId) {
+            try {
+                await fetch(`${BASE_URL}/notifications.php?id=${encodeURIComponent(notificationId)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ is_read: true })
+                });
+            } catch (error) {
+                console.error('Error marking notification as read:', error);
+            }
+        }
+        
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Check for new notifications
+        async function checkForNotifications() {
+            try {
+                const url = lastNotificationCheck 
+                    ? `${BASE_URL}/notifications.php?unread_only=true`
+                    : `${BASE_URL}/notifications.php?unread_only=true`;
+                
+                const response = await fetch(url, {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.notifications && Array.isArray(data.notifications)) {
+                        // Display only new notifications (not already displayed)
+                        data.notifications.forEach(notification => {
+                            if (!displayedNotificationIds.has(notification.id) && !notification.is_read) {
+                                displayNotification(notification);
+                            }
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking notifications:', error);
+            }
+        }
+        
+        // Start polling for notifications
+        function startNotificationPolling() {
+            // Check immediately
+            checkForNotifications();
+            
+            // Then check every 5 seconds
+            notificationCheckInterval = setInterval(checkForNotifications, 5000);
+        }
+        
+        // Stop polling for notifications
+        function stopNotificationPolling() {
+            if (notificationCheckInterval) {
+                clearInterval(notificationCheckInterval);
+                notificationCheckInterval = null;
+            }
+        }
+        
+        // Start notification polling when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Wait a bit before starting to ensure session is loaded
+            setTimeout(startNotificationPolling, 1000);
+        });
+        
+        // Stop polling when page is hidden (to save resources)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopNotificationPolling();
+            } else {
+                startNotificationPolling();
+            }
+        });
     </script>
 </body>
 </html>

@@ -46,6 +46,41 @@ function requireAuth() {
 }
 
 /**
+ * Generate UUID v4
+ */
+function generateUUID() {
+    return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0x0fff) | 0x4000, // Version 4
+        mt_rand(0, 0x3fff) | 0x8000, // Variant bits
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+    );
+}
+
+/**
+ * Create a notification for a user
+ * @param PDO $pdo Database connection
+ * @param string $userId User ID to notify
+ * @param string $postId Post ID (can be null)
+ * @param string $type Notification type
+ * @param string $title Notification title
+ * @param string $message Notification message
+ * @return bool True if notification was created successfully
+ */
+function createNotification($pdo, $userId, $postId, $type, $title, $message) {
+    try {
+        $notificationId = generateUUID();
+        $stmt = $pdo->prepare('INSERT INTO notifications (id, user_id, post_id, type, title, message, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NOW())');
+        $stmt->execute([$notificationId, $userId, $postId, $type, $title, $message]);
+        return true;
+    } catch (PDOException $e) {
+        error_log("Failed to create notification: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Check if user is admin
  * @param PDO $pdo Database connection
  * @param string $userId User ID to check
@@ -226,6 +261,50 @@ try {
             $stmt = $pdo->prepare('SELECT c.*, u.name as user_name, u.email as user_email, u.picture as user_picture FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.id = ?');
             $stmt->execute([$uuid]);
             $newComment = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Get commenter name for notifications
+            $commenterName = $newComment['user_name'] ?? 'Someone';
+            
+            // Get post info for notifications (creator and followers)
+            $postInfoStmt = $pdo->prepare('SELECT user_id, item_name, title, follower_ids FROM posts WHERE id = ?');
+            $postInfoStmt->execute([$postId]);
+            $postInfo = $postInfoStmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($postInfo) {
+                $postCreatorId = $postInfo['user_id'] ?? null;
+                $postItemName = $postInfo['item_name'] ?? 'Post';
+                
+                // Get follower_ids
+                $followerIds = [];
+                if (isset($postInfo['follower_ids']) && $postInfo['follower_ids']) {
+                    $decoded = json_decode($postInfo['follower_ids'], true);
+                    if (is_array($decoded)) {
+                        $followerIds = $decoded;
+                    }
+                }
+                
+                // Truncate comment content for notification (max 100 chars)
+                $commentPreview = mb_substr($content, 0, 100);
+                if (mb_strlen($content) > 100) {
+                    $commentPreview .= '...';
+                }
+                
+                // Create notifications for post creator (if not the commenter)
+                if ($postCreatorId && strtolower(trim($postCreatorId)) !== strtolower(trim($userId))) {
+                    createNotification($pdo, $postCreatorId, $postId, 'comment_added', 
+                        'New Comment on Your Post', 
+                        "$commenterName commented on your post \"$postItemName\": \"$commentPreview\"");
+                }
+                
+                // Create notifications for followers (if not the commenter)
+                foreach ($followerIds as $followerId) {
+                    if (strtolower(trim($followerId)) !== strtolower(trim($userId))) {
+                        createNotification($pdo, $followerId, $postId, 'comment_added', 
+                            'New Comment on Followed Post', 
+                            "$commenterName commented on \"$postItemName\": \"$commentPreview\"");
+                    }
+                }
+            }
             
             http_response_code(201);
             echo json_encode([

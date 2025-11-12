@@ -36,6 +36,41 @@ function requireAuth() {
 }
 
 /**
+ * Generate UUID v4
+ */
+function generateUUID() {
+    return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0x0fff) | 0x4000, // Version 4
+        mt_rand(0, 0x3fff) | 0x8000, // Variant bits
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+    );
+}
+
+/**
+ * Create a notification for a user
+ * @param PDO $pdo Database connection
+ * @param string $userId User ID to notify
+ * @param string $postId Post ID (can be null)
+ * @param string $type Notification type
+ * @param string $title Notification title
+ * @param string $message Notification message
+ * @return bool True if notification was created successfully
+ */
+function createNotification($pdo, $userId, $postId, $type, $title, $message) {
+    try {
+        $notificationId = generateUUID();
+        $stmt = $pdo->prepare('INSERT INTO notifications (id, user_id, post_id, type, title, message, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NOW())');
+        $stmt->execute([$notificationId, $userId, $postId, $type, $title, $message]);
+        return true;
+    } catch (PDOException $e) {
+        error_log("Failed to create notification: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Check if user is admin
  * @param PDO $pdo Database connection
  * @param string $userId User ID to check
@@ -397,6 +432,13 @@ try {
             
             $newId = $uuid;
             
+            // Create notification for post creator
+            $notificationTitle = $approvalStatus === 'approved' ? 'Post Approved' : 'Post Created';
+            $notificationMessage = $approvalStatus === 'approved' 
+                ? "Your post \"$itemName\" has been approved and is now visible to all users."
+                : "Your post \"$itemName\" has been created and is pending admin approval.";
+            createNotification($pdo, $userId, $newId, 'post_created', $notificationTitle, $notificationMessage);
+            
             http_response_code(201);
             echo json_encode([
                 'status' => 'success',
@@ -542,9 +584,40 @@ try {
                 $params[] = $photoIds;
             }
             
+            // Get post info for notifications
+            $postInfoStmt = $pdo->prepare('SELECT user_id, item_name, title, follower_ids FROM posts WHERE id = ?');
+            $postInfoStmt->execute([$id]);
+            $postInfo = $postInfoStmt->fetch(PDO::FETCH_ASSOC);
+            $postCreatorId = $postInfo['user_id'] ?? null;
+            $postItemName = $postInfo['item_name'] ?? 'Post';
+            $postTitle = $postInfo['title'] ?? $postItemName;
+            
+            // Get current follower_ids for notifications
+            $followerIds = [];
+            if (isset($postInfo['follower_ids']) && $postInfo['follower_ids']) {
+                $decoded = json_decode($postInfo['follower_ids'], true);
+                if (is_array($decoded)) {
+                    $followerIds = $decoded;
+                }
+            }
+            
+            // Track if approval status changed
+            $approvalStatusChanged = false;
+            $newApprovalStatus = null;
+            
             // Allow admins to update approval status
             if (isset($data['admin_approval_status']) && $isAdmin) {
                 if (in_array($data['admin_approval_status'], ['pending', 'approved', 'rejected'])) {
+                    // Check if status is actually changing
+                    $currentStatusStmt = $pdo->prepare('SELECT admin_approval_status FROM posts WHERE id = ?');
+                    $currentStatusStmt->execute([$id]);
+                    $currentStatus = $currentStatusStmt->fetchColumn();
+                    
+                    if ($currentStatus !== $data['admin_approval_status']) {
+                        $approvalStatusChanged = true;
+                        $newApprovalStatus = $data['admin_approval_status'];
+                    }
+                    
                     $updates[] = 'admin_approval_status = ?';
                     $params[] = $data['admin_approval_status'];
                 }
@@ -565,6 +638,33 @@ try {
             $sql = 'UPDATE posts SET ' . implode(', ', $updates) . ' WHERE id = ?';
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
+            
+            // Create notifications
+            // 1. Notify post creator if approval status changed
+            if ($approvalStatusChanged && $postCreatorId) {
+                if ($newApprovalStatus === 'approved') {
+                    createNotification($pdo, $postCreatorId, $id, 'post_approved', 
+                        'Post Approved', 
+                        "Your post \"$postItemName\" has been approved by an admin and is now visible to all users.");
+                } else if ($newApprovalStatus === 'rejected') {
+                    createNotification($pdo, $postCreatorId, $id, 'post_rejected', 
+                        'Post Rejected', 
+                        "Your post \"$postItemName\" has been rejected by an admin.");
+                }
+            }
+            
+            // 2. Notify followers and creator about post update (if not just approval status change)
+            if (!$approvalStatusChanged || count($updates) > 2) { // More than just approval status and updated_at
+                $usersToNotify = array_unique(array_merge($followerIds, $postCreatorId ? [$postCreatorId] : []));
+                foreach ($usersToNotify as $notifyUserId) {
+                    // Don't notify the person who made the update
+                    if (strtolower(trim($notifyUserId)) !== strtolower(trim($userId))) {
+                        createNotification($pdo, $notifyUserId, $id, 'post_updated', 
+                            'Post Updated', 
+                            "A post you're following \"$postItemName\" has been updated.");
+                    }
+                }
+            }
             
             http_response_code(200);
             echo json_encode([
@@ -618,8 +718,35 @@ try {
                 exit;
             }
             
+            // Get post info for notifications before deleting
+            $postInfoStmt = $pdo->prepare('SELECT user_id, item_name, title, follower_ids FROM posts WHERE id = ?');
+            $postInfoStmt->execute([$id]);
+            $postInfo = $postInfoStmt->fetch(PDO::FETCH_ASSOC);
+            $postCreatorId = $postInfo['user_id'] ?? null;
+            $postItemName = $postInfo['item_name'] ?? 'Post';
+            
+            // Get follower_ids for notifications
+            $followerIds = [];
+            if (isset($postInfo['follower_ids']) && $postInfo['follower_ids']) {
+                $decoded = json_decode($postInfo['follower_ids'], true);
+                if (is_array($decoded)) {
+                    $followerIds = $decoded;
+                }
+            }
+            
+            // Delete the post
             $stmt = $pdo->prepare('DELETE FROM posts WHERE id = ?');
             $stmt->execute([$id]);
+            
+            // Create notifications for followers (not for creator, they know they deleted it)
+            foreach ($followerIds as $followerId) {
+                // Don't notify the person who deleted it
+                if (strtolower(trim($followerId)) !== strtolower(trim($userId))) {
+                    createNotification($pdo, $followerId, null, 'post_deleted', 
+                        'Post Deleted', 
+                        "A post you were following \"$postItemName\" has been deleted.");
+                }
+            }
             
             http_response_code(200);
             echo json_encode([
