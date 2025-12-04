@@ -1,16 +1,13 @@
 <?php
+require_once 'config.php';
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+setCORSHeaders();
 
 // Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
-
-require_once 'config.php';
 
 // UUID validation function
 function isValidUUID($uuid) {
@@ -139,6 +136,37 @@ try {
                         'message' => 'User not found'
                     ]);
                 }
+            } elseif ($id !== null && !isValidUUID($id)) {
+                // Attempt to map non-UUID id to current user's Google ID for self-view
+                $currentUserGoogleId = isset($_SESSION['user']) && isset($_SESSION['user']['id']) ? $_SESSION['user']['id'] : null;
+                $currentUserUuid = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+
+                // Only allow if provided id matches the logged-in user's Google ID
+                if (!$currentUserGoogleId || $id !== $currentUserGoogleId) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Valid User ID (UUID) is required',
+                    ]);
+                    exit;
+                }
+
+                // Fetch by google_id for the current user
+                $stmt = $pdo->prepare('SELECT id, google_id, email, name, picture, phone, created_at, updated_at, last_login, role FROM users WHERE google_id = ? LIMIT 1');
+                $stmt->execute([$id]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($user) {
+                    // Google ID matches the logged-in user; allow self-view
+                    http_response_code(200);
+                    echo json_encode($user);
+                } else {
+                    http_response_code(404);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'User not found'
+                    ]);
+                }
             } else {
                 // Get all users - admin only
                 $currentUserId = requireAuth();
@@ -219,35 +247,57 @@ try {
             $updates = [];
             $params = [];
             
-            // Users can update these fields
-            if (isset($data['name'])) {
-                $updates[] = 'name = ?';
-                $params[] = trim($data['name']);
-            }
-            
-            if (isset($data['picture'])) {
-                $updates[] = 'picture = ?';
-                $params[] = trim($data['picture']);
-            }
-            
-            if (isset($data['phone'])) {
-                $phone = trim($data['phone']);
-                // Basic phone validation
-                if (preg_match('/^[0-9\-\+\(\)\s]+$/', $phone) && strlen($phone) <= 20) {
-                    $updates[] = 'phone = ?';
-                    $params[] = $phone;
-                } else {
-                    http_response_code(400);
-                    echo json_encode([
-                        'status' => 'error',
-                        'message' => 'Invalid phone number format'
-                    ]);
-                    exit;
+            // Regular users can only update their own profile picture and phone number
+            if (!$isAdmin) {
+                // Only allow picture and phone for regular users
+                if (isset($data['picture'])) {
+                    $updates[] = 'picture = ?';
+                    $params[] = trim($data['picture']);
                 }
-            }
-            
-            // Only admins can update these fields
-            if ($isAdmin) {
+                
+                if (isset($data['phone'])) {
+                    $phone = trim($data['phone']);
+                    // Basic phone validation
+                    if (preg_match('/^[0-9\-\+\(\)\s]+$/', $phone) && strlen($phone) <= 20) {
+                        $updates[] = 'phone = ?';
+                        $params[] = $phone;
+                    } else {
+                        http_response_code(400);
+                        echo json_encode([
+                            'status' => 'error',
+                            'message' => 'Invalid phone number format'
+                        ]);
+                        exit;
+                    }
+                }
+            } else {
+                // Admins can update all fields
+                if (isset($data['name'])) {
+                    $updates[] = 'name = ?';
+                    $params[] = trim($data['name']);
+                }
+                
+                if (isset($data['picture'])) {
+                    $updates[] = 'picture = ?';
+                    $params[] = trim($data['picture']);
+                }
+                
+                if (isset($data['phone'])) {
+                    $phone = trim($data['phone']);
+                    // Basic phone validation
+                    if (preg_match('/^[0-9\-\+\(\)\s]+$/', $phone) && strlen($phone) <= 20) {
+                        $updates[] = 'phone = ?';
+                        $params[] = $phone;
+                    } else {
+                        http_response_code(400);
+                        echo json_encode([
+                            'status' => 'error',
+                            'message' => 'Invalid phone number format'
+                        ]);
+                        exit;
+                    }
+                }
+                
                 if (isset($data['email'])) {
                     $email = trim($data['email']);
                     if (filter_var($email, FILTER_VALIDATE_EMAIL)) {

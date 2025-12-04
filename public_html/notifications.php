@@ -1,8 +1,7 @@
 <?php
+require_once 'config.php';
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+setCORSHeaders();
 
 // Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -35,7 +34,24 @@ function generateUUID() {
  * Returns user_id if authenticated, false otherwise
  */
 function requireAuth() {
-    startSession();
+    // Use dev-aware session start
+    $devHeader = $_SERVER['HTTP_X_DEV_MODE'] ?? '';
+    $forwardedHost = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    $isDev = ($devHeader === 'true') || str_contains($forwardedHost, 'localhost') || str_contains($host, 'localhost');
+    
+    if (session_status() === PHP_SESSION_NONE) {
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => $isDev ? 'localhost' : 'project.frankhagan.online',
+            'secure' => !$isDev,
+            'httponly' => true,
+            'samesite' => $isDev ? 'Lax' : 'None',
+        ]);
+        session_start();
+    }
+    
     if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
         http_response_code(401);
         echo json_encode([

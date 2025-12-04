@@ -1,76 +1,111 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
-import type { Route } from "./+types/home";
+import { Link, useLocation } from "react-router";
 import { mapRowToPost, type Post, type PostRow } from "~/types/post";
-
-export function meta({}: Route.MetaArgs) {
-    return [{ title: "Lost and Found" }, { name: "description", content: "Welcome to Lost and Found!" }];
-}
+import { Button } from "~/components/ui/button";
+import PostCard from "~/components/posts/post-card";
+import { PostGridSkeleton } from "~/components/posts/post-card-skeleton";
+import { MessageCircleQuestion, Search } from "lucide-react";
+import { useAuth } from "~/lib/authContext";
 
 export default function Home() {
     const [posts, setPosts] = useState<Post[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { loggedIn } = useAuth();
+    const location = useLocation();
 
-    const getPosts = async () => {
-        try {
-            const response = await fetch("https://project.frankhagan.online/posts.php");
-            if (response.ok) {
-                const data = await response.json();
-                const dataRows: PostRow[] = data.posts;
-                const posts = dataRows.map(mapRowToPost);
-                setPosts(posts);
-            } else {
-                console.error("Failed to fetch posts");
-            }
-        } catch (error) {
-            console.error("Error fetching posts:", error);
-        }
-    };
+    const loginUrl = `${
+        import.meta.env.DEV ? "/api/auth/login.php" : "https://project.frankhagan.online/auth/login.php"
+    }?return_to=${encodeURIComponent(location.pathname + location.search)}`;
 
     useEffect(() => {
+        async function getPosts() {
+            try {
+                setLoading(true);
+                const url = import.meta.env.DEV ? "/api/posts.php" : "https://project.frankhagan.online/posts.php";
+                const response = await fetch(url, {
+                    credentials: "include",
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const dataRows: PostRow[] = data.posts;
+                    const posts = dataRows.map(mapRowToPost);
+                    setPosts(posts);
+                } else {
+                    console.error("Failed to fetch posts");
+                }
+            } catch (error) {
+                console.error("Error fetching posts:", error);
+            } finally {
+                setLoading(false);
+            }
+        }
         getPosts();
     }, []);
 
     return (
-        <main className="pt-16 p-4 container mx-auto">
-            <h1 className="text-4xl font-bold mb-4">Welcome to Lost and Found</h1>
-            <div className="mb-4">
-                <Link
-                    to="/posts/new"
-                    className="inline-block px-4 py-2 bg-wentworth-gold--2 text-white rounded hover:bg-wentworth-gold"
-                >
-                    Create Post
-                </Link>
+        <main className="p-4 md:p-8 w-full">
+            <div className="mb-8 flex flex-col md:flex-row items-stretch justify-around w-full px-4 md:px-32 py-8 md:py-16 gap-8 md:gap-16">
+                <div className="text-center md:text-left">
+                    <h1 className="text-5xl md:text-6xl lg:text-8xl font-semibold mb-1">Find & Recover</h1>
+                    <h1 className="text-5xl md:text-6xl lg:text-8xl font-semibold mb-4 md:mb-6 from-green-800 via-50% via-black/80 to-red-800 bg-linear-to-r bg-clip-text text-transparent w-fit mx-auto md:mx-0">
+                        With Ease
+                    </h1>
+                    <p className="text-lg text-center md:text-xl lg:text-2xl w-fit md:ml-2 mx-auto md:mx-0">
+                        Community Led Lost & Found Recovery
+                    </p>
+                </div>
+                <div className="mb-4 flex flex-col justify-around items-stretch gap-4 md:gap-6">
+                    <Link to="/posts/new/lost" className="rounded-xl hover:cursor-pointer w-full">
+                        <Button className="bg-red-700 text-white text-lg md:text-xl lg:text-2xl px-6 md:px-8 py-3 md:py-4 w-full gap-3 md:gap-4">
+                            <MessageCircleQuestion className="size-6 md:size-8" />
+                            Lost an Item?
+                        </Button>
+                    </Link>
+                    <Link to="/posts/new/found" className="rounded-xl hover:cursor-pointer w-full">
+                        <Button className="bg-green-600 text-white text-lg md:text-xl lg:text-2xl px-6 md:px-8 py-3 md:py-4 w-full gap-3 md:gap-4">
+                            <Search className="size-6 md:size-8" />
+                            Found an Item?
+                        </Button>
+                    </Link>
+                </div>
             </div>
-            <p className="text-lg">
-                This is the home page of the Lost and Found application. Here you can report lost items, found items,
-                and search for items that have been reported.
-            </p>
 
-            <section className="mt-8">
-                <h2 className="text-2xl font-semibold mb-4">Recent Posts</h2>
-                {posts.length === 0 ? (
-                    <p>No posts available.</p>
+            <section className="mt-8 md:mt-16">
+                <h2 className="text-3xl md:text-4xl lg:text-5xl font-semibold text-center mb-8 md:mb-16">
+                    Recent Posts
+                </h2>
+                {!loggedIn && posts.length > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-center">
+                        <p className="text-blue-800">
+                            <a href={loginUrl} className="font-semibold underline">
+                                Please sign in
+                            </a>{" "}
+                            to view all posts. Some posts may be hidden.
+                        </p>
+                    </div>
+                )}
+                {loading ? (
+                    <PostGridSkeleton count={Math.max(3, posts.length)} />
+                ) : posts.length === 0 ? (
+                    <p className="text-center">
+                        {!loggedIn ? (
+                            <>
+                                <a href={loginUrl} className="font-semibold text-blue-600 underline">
+                                    Please sign in to view posts
+                                </a>
+                            </>
+                        ) : (
+                            "No posts available."
+                        )}
+                    </p>
                 ) : (
-                    <ul className="space-y-4">
-                        {posts.map((post) => (
-                            <li key={post.id} className="border p-4 rounded shadow">
-                                <h3 className="text-xl font-bold">{post.title}</h3>
-                                {post.description && <p className="mt-2">{post.description}</p>}
-                                <p className="mt-2 text-sm text-gray-600">
-                                    Posted on: {post.createdAt.toLocaleDateString()}
-                                </p>
-                                <p className="mt-2">ID: {post.id}</p>
-                                <div className="mt-3 flex gap-2">
-                                    <Link
-                                        to={`/posts/${post.id}/edit`}
-                                        className="px-3 py-1 bg-yellow-500 text-white rounded"
-                                    >
-                                        Edit
-                                    </Link>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
+                        {[...posts]
+                            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+                            .map((post) => (
+                                <PostCard key={post.id} post={post} />
+                            ))}
+                    </div>
                 )}
             </section>
         </main>

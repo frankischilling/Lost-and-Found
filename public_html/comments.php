@@ -1,8 +1,7 @@
 <?php
+require_once 'config.php';
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+setCORSHeaders();
 
 // Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -136,6 +135,13 @@ try {
     
     switch ($method) {
         case 'GET':
+            // Check if user is authenticated (optional for GET)
+            startSession();
+            $currentUserId = null;
+            if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+                $currentUserId = $_SESSION['user_id'] ?? null;
+            }
+            
             if ($id !== null && isValidUUID($id)) {
                 // Get single comment by ID
                 $stmt = $pdo->prepare('SELECT c.*, u.name as user_name, u.email as user_email, u.picture as user_picture FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.id = ?');
@@ -143,6 +149,14 @@ try {
                 $comment = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if ($comment) {
+                    // Anonymize for unauthenticated users
+                    if (!$currentUserId) {
+                        $comment['user_name'] = 'Anonymous User';
+                        $comment['user_email'] = null;
+                        $comment['user_picture'] = null;
+                        unset($comment['user_id']);
+                    }
+                    
                     http_response_code(200);
                     echo json_encode($comment);
                 } else {
@@ -153,7 +167,7 @@ try {
                     ]);
                 }
             } else if ($postId !== null && isValidUUID($postId)) {
-                // Get all comments for a specific post
+                // Get all comments for a specific post with pagination
                 // First verify the post exists
                 $postCheck = $pdo->prepare('SELECT id FROM posts WHERE id = ?');
                 $postCheck->execute([$postId]);
@@ -167,15 +181,41 @@ try {
                     exit;
                 }
                 
-                $stmt = $pdo->prepare('SELECT c.*, u.name as user_name, u.email as user_email, u.picture as user_picture FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC');
-                $stmt->execute([$postId]);
+                // Pagination parameters
+                $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+                $pageSize = isset($_GET['pageSize']) ? min(100, max(1, intval($_GET['pageSize']))) : 10;
+                $offset = ($page - 1) * $pageSize;
+                
+                // Get total count
+                $countStmt = $pdo->prepare('SELECT COUNT(*) as total FROM comments WHERE post_id = ?');
+                $countStmt->execute([$postId]);
+                $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+                
+                // Get paginated comments
+                $stmt = $pdo->prepare('SELECT c.*, u.name as user_name, u.email as user_email, u.picture as user_picture FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at DESC LIMIT ? OFFSET ?');
+                $stmt->execute([$postId, $pageSize, $offset]);
                 $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Anonymize comments for unauthenticated users
+                if (!$currentUserId) {
+                    foreach ($comments as &$comment) {
+                        $comment['user_name'] = 'Anonymous User';
+                        $comment['user_email'] = null;
+                        $comment['user_picture'] = null;
+                        unset($comment['user_id']);
+                    }
+                }
+                
+                $hasMore = ($offset + count($comments)) < $totalCount;
                 
                 http_response_code(200);
                 echo json_encode([
                     'status' => 'success',
-                    'count' => count($comments),
-                    'comments' => $comments
+                    'items' => $comments,
+                    'page' => $page,
+                    'pageSize' => $pageSize,
+                    'totalCount' => $totalCount,
+                    'hasMore' => $hasMore
                 ]);
             } else {
                 http_response_code(400);
@@ -209,7 +249,9 @@ try {
                 exit;
             }
             
-            if (!isset($data['content']) || empty(trim($data['content']))) {
+            // Support both 'content' and 'message' field names
+            $contentField = isset($data['content']) ? $data['content'] : (isset($data['message']) ? $data['message'] : '');
+            if (empty(trim($contentField))) {
                 http_response_code(400);
                 echo json_encode([
                     'status' => 'error',
@@ -219,7 +261,7 @@ try {
             }
             
             $postId = trim($data['post_id']);
-            $content = trim($data['content']);
+            $content = trim($contentField);
             
             // Validate UUID format
             if (!isValidUUID($postId)) {

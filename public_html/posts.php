@@ -1,16 +1,13 @@
 <?php
+require_once 'config.php';
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+setCORSHeaders();
 
 // Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
-
-require_once 'config.php';
 
 // UUID validation function
 function isValidUUID($uuid) {
@@ -22,7 +19,24 @@ function isValidUUID($uuid) {
  * Returns user_id if authenticated, false otherwise
  */
 function requireAuth() {
-    startSession();
+    // Use dev-aware session start
+    $devHeader = $_SERVER['HTTP_X_DEV_MODE'] ?? '';
+    $forwardedHost = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    $isDev = ($devHeader === 'true') || str_contains($forwardedHost, 'localhost') || str_contains($host, 'localhost');
+    
+    if (session_status() === PHP_SESSION_NONE) {
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => $isDev ? 'localhost' : 'project.frankhagan.online',
+            'secure' => !$isDev,
+            'httponly' => true,
+            'samesite' => $isDev ? 'Lax' : 'None',
+        ]);
+        session_start();
+    }
+    
     if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
         http_response_code(401);
         echo json_encode([
@@ -71,6 +85,31 @@ function createNotification($pdo, $userId, $postId, $type, $title, $message) {
 }
 
 /**
+ * Log a history event for a post
+ * @param PDO $pdo Database connection
+ * @param string $postId Post ID
+ * @param string $userId User ID (can be null for system events)
+ * @param string $type Event type (e.g., 'created', 'updated', 'status_changed', 'comment_added', 'approved', 'rejected', 'marked_claimed')
+ * @param string $message Human-readable message describing the event
+ * @param array $metadata Optional additional data (will be JSON encoded)
+ * @return string|false History entry ID on success, false on failure
+ */
+function logPostHistory($pdo, $postId, $userId, $type, $message, $metadata = null) {
+    try {
+        $historyId = generateUUID();
+        $metadataJson = $metadata ? json_encode($metadata) : null;
+        
+        $stmt = $pdo->prepare('INSERT INTO post_history (id, post_id, user_id, type, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
+        $stmt->execute([$historyId, $postId, $userId, $type, $message, $metadataJson]);
+        
+        return $historyId;
+    } catch (PDOException $e) {
+        error_log("Failed to log post history: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Check if user is admin
  * @param PDO $pdo Database connection
  * @param string $userId User ID to check
@@ -78,8 +117,7 @@ function createNotification($pdo, $userId, $postId, $type, $title, $message) {
  */
 function isUserAdmin($pdo, $userId) {
     try {
-        // First, try to get role field (primary method)
-        // This handles the case where only 'role' column exists
+        // Prefer checking by database UUID 'id' (current session value)
         $stmt = $pdo->prepare('SELECT role FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$userId]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -91,21 +129,31 @@ function isUserAdmin($pdo, $userId) {
             }
         }
         
-        // If role check didn't work, try is_admin field (fallback for older schemas)
+        // Fallbacks for older schemas that used google_id
+        // Try role via google_id
+        $stmt = $pdo->prepare('SELECT role FROM users WHERE google_id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($user && isset($user['role']) && $user['role'] !== null) {
+            $role = trim(strtolower($user['role']));
+            if ($role === 'admin') {
+                return true;
+            }
+        }
+        
+        // Try is_admin flag via google_id (legacy)
         try {
-            $stmt = $pdo->prepare('SELECT is_admin FROM users WHERE id = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT is_admin FROM users WHERE google_id = ? LIMIT 1');
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            
             if ($user && isset($user['is_admin'])) {
                 $isAdminBool = $user['is_admin'];
-                // Handle different return types from MySQL
                 if ($isAdminBool === true || $isAdminBool === 1 || $isAdminBool === '1') {
                     return true;
                 }
             }
         } catch (PDOException $e) {
-            // is_admin column doesn't exist, that's fine - we're using role
+            // Column may not exist; ignore
         }
         
         return false;
@@ -123,10 +171,19 @@ try {
         throw new Exception('Failed to connect to database');
     }
     
+    // Determine if running in dev mode
+    $devHeader = $_SERVER['HTTP_X_DEV_MODE'] ?? '';
+    $forwardedHost = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    $isDev = ($devHeader === 'true') || str_contains($forwardedHost, 'localhost') || str_contains($host, 'localhost');
+    
     $method = $_SERVER['REQUEST_METHOD'];
     $id = isset($_GET['id']) ? trim($_GET['id']) : null;
     $postType = isset($_GET['type']) ? $_GET['type'] : null; // Filter by 'lost' or 'found'
+    // Support both 'approval_status' (legacy) and 'admin_approval_status' (explicit)
+    $approvalStatus = isset($_GET['admin_approval_status']) ? $_GET['admin_approval_status'] : (isset($_GET['approval_status']) ? $_GET['approval_status'] : null);
     $action = isset($_GET['action']) ? strtolower(trim($_GET['action'])) : null; // 'follow' or 'unfollow'
+    $includeClaimed = isset($_GET['include_claimed']) && $_GET['include_claimed'] === 'true'; // Admin flag to include claimed posts
     if ($action === '') {
         $action = null; // Treat empty string as null
     }
@@ -140,6 +197,38 @@ try {
                 $post = $stmt->fetch();
                 
                 if ($post) {
+                    // Check if post is deleted and user is not admin
+                    $currentUserId = null;
+                    $isAdmin = false;
+                    if (session_status() === PHP_SESSION_NONE) {
+                        session_set_cookie_params([
+                            'lifetime' => 0,
+                            'path' => '/',
+                            'domain' => $isDev ? 'localhost' : 'project.frankhagan.online',
+                            'secure' => !$isDev,
+                            'httponly' => true,
+                            'samesite' => $isDev ? 'Lax' : 'None',
+                        ]);
+                        session_start();
+                    }
+                    
+                    if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+                        $currentUserId = $_SESSION['user_id'] ?? null;
+                        if ($currentUserId) {
+                            $isAdmin = isUserAdmin($pdo, $currentUserId);
+                        }
+                    }
+                    
+                    // If post is deleted and user is not admin, return 404
+                    if ($post['is_deleted'] && !$isAdmin) {
+                        http_response_code(404);
+                        echo json_encode([
+                            'status' => 'error',
+                            'message' => 'Post not found'
+                        ]);
+                        exit;
+                    }
+                    
                     // Parse JSON fields if they exist
                     if (isset($post['tags']) && $post['tags']) {
                         $post['tags'] = json_decode($post['tags'], true);
@@ -159,6 +248,20 @@ try {
                         $post['follower_ids'] = [];
                     }
                     http_response_code(200);
+                    
+                    // Add author name and picture for all users
+                    if (isset($post['user_id']) && $post['user_id']) {
+                        $authorStmt = $pdo->prepare('SELECT name, picture FROM users WHERE id = ? OR google_id = ? LIMIT 1');
+                        $authorStmt->execute([$post['user_id'], $post['user_id']]);
+                        $author = $authorStmt->fetch();
+                        if ($author) {
+                            $post['author_name'] = $author['name'];
+                            $post['author_picture'] = $author['picture'];
+                        } else {
+                            $post['author_name'] = 'Unknown';
+                        }
+                    }
+                    
                     echo json_encode($post);
                 } else {
                     http_response_code(404);
@@ -168,16 +271,119 @@ try {
                     ]);
                 }
             } else {
-                // Get all posts (optionally filtered by type)
-                if ($postType && in_array($postType, ['lost', 'found'])) {
-                    $stmt = $pdo->prepare('SELECT * FROM posts WHERE post_type = ? ORDER BY created_at DESC');
-                    $stmt->execute([$postType]);
-                } else {
-                    $stmt = $pdo->query('SELECT * FROM posts ORDER BY created_at DESC');
+                // Get posts - authentication optional
+                // Unauthenticated users see only approved posts with privacy='anyone'
+                // Regular users see only approved posts with privacy='anyone' or 'school_members'
+                // Admins see all posts regardless of privacy
+                
+                $currentUserId = null;
+                $isAdmin = false;
+                
+                // Check if user is authenticated (but don't require it)
+                if (session_status() === PHP_SESSION_NONE) {
+                    session_set_cookie_params([
+                        'lifetime' => 0,
+                        'path' => '/',
+                        'domain' => $isDev ? 'localhost' : 'project.frankhagan.online',
+                        'secure' => !$isDev,
+                        'httponly' => true,
+                        'samesite' => $isDev ? 'Lax' : 'None',
+                    ]);
+                    session_start();
                 }
+                
+                if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+                    $currentUserId = $_SESSION['user_id'] ?? null;
+                    if ($currentUserId) {
+                        $isAdmin = isUserAdmin($pdo, $currentUserId);
+                    }
+                }
+                
+                // Build query based on user role and filters
+                $conditions = [];
+                $params = [];
+                
+                if ($isAdmin) {
+                    // Admins can filter by approval status
+                    if ($approvalStatus && in_array($approvalStatus, ['pending', 'approved', 'rejected'])) {
+                        $conditions[] = 'admin_approval_status = ?';
+                        $params[] = $approvalStatus;
+                    } else {
+                        // When no approval status is specified, default to showing only approved posts
+                        $conditions[] = 'admin_approval_status = ?';
+                        $params[] = 'approved';
+                    }
+                    // Admins can filter by post type
+                    if ($postType && in_array($postType, ['lost', 'found'])) {
+                        $conditions[] = 'post_type = ?';
+                        $params[] = $postType;
+                    }
+                    // Admins only see claimed posts if explicitly requested
+                    if (!$includeClaimed) {
+                        $conditions[] = '(is_claimed = 0 OR is_claimed IS NULL)';
+                    }
+                    // Admins see deleted posts only if requested via include_deleted parameter
+                    if (!isset($_GET['include_deleted']) || $_GET['include_deleted'] !== 'true') {
+                        $conditions[] = '(is_deleted = 0 OR is_deleted IS NULL)';
+                    }
+                } else if ($currentUserId) {
+                    // Authenticated regular users see only approved posts
+                    $conditions[] = 'admin_approval_status = ?';
+                    $params[] = 'approved';
+                    
+                    // Regular users never see claimed posts
+                    $conditions[] = '(is_claimed = 0 OR is_claimed IS NULL)';
+                    
+                    // Regular users never see deleted posts
+                    $conditions[] = '(is_deleted = 0 OR is_deleted IS NULL)';
+                    
+                    // Regular users see posts based on privacy settings
+                    // - "anyone": visible to all
+                    // - "school_members": visible only to authenticated school members (regular users are authenticated, so they see it)
+                    // - "private": not visible to regular users (owner only)
+                    $conditions[] = '(privacy = ? OR privacy = ?)';
+                    $params[] = 'anyone';
+                    $params[] = 'school_members';
+                    
+                    // Regular users can filter by post type
+                    if ($postType && in_array($postType, ['lost', 'found'])) {
+                        $conditions[] = 'post_type = ?';
+                        $params[] = $postType;
+                    }
+                } else {
+                    // Unauthenticated users see only approved posts with privacy='anyone'
+                    $conditions[] = 'admin_approval_status = ?';
+                    $params[] = 'approved';
+                    
+                    // Unauthenticated users never see claimed posts
+                    $conditions[] = '(is_claimed = 0 OR is_claimed IS NULL)';
+                    
+                    // Unauthenticated users never see deleted posts
+                    $conditions[] = '(is_deleted = 0 OR is_deleted IS NULL)';
+                    
+                    // Unauthenticated users see only 'anyone' privacy posts
+                    $conditions[] = 'privacy = ?';
+                    $params[] = 'anyone';
+                    
+                    // Unauthenticated users can filter by post type
+                    if ($postType && in_array($postType, ['lost', 'found'])) {
+                        $conditions[] = 'post_type = ?';
+                        $params[] = $postType;
+                    }
+                }
+                
+                // Build and execute query
+                $sql = 'SELECT * FROM posts';
+                if (!empty($conditions)) {
+                    $sql .= ' WHERE ' . implode(' AND ', $conditions);
+                }
+                $sql .= ' ORDER BY created_at DESC';
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
                 $posts = $stmt->fetchAll();
                 
-                // Parse JSON fields for each post
+                // Parse JSON fields and enrich with author info for each post
                 foreach ($posts as &$post) {
                     if (isset($post['tags']) && $post['tags']) {
                         $post['tags'] = json_decode($post['tags'], true);
@@ -195,6 +401,27 @@ try {
                         }
                     } else {
                         $post['follower_ids'] = [];
+                    }
+                    
+                    // Anonymize data for unauthenticated users
+                    if (!$currentUserId) {
+                        // Remove sensitive user information
+                        unset($post['user_id']);
+                        unset($post['follower_ids']);
+                    }
+                    
+                    // Add author name for admin view
+                    if ($isAdmin && isset($post['user_id'])) {
+                        // Try by database UUID (id) first, then fallback to google_id
+                        $authorStmt = $pdo->prepare('SELECT name FROM users WHERE id = ? OR google_id = ? LIMIT 1');
+                        $authorStmt->execute([$post['user_id'], $post['user_id']]);
+                        $author = $authorStmt->fetch();
+                        $post['author_name'] = $author ? $author['name'] : 'Unknown';
+                    }
+                    
+                    // Map id to uuid for frontend compatibility
+                    if (isset($post['id']) && !isset($post['uuid'])) {
+                        $post['uuid'] = $post['id'];
                     }
                 }
                 
@@ -365,6 +592,20 @@ try {
                 exit;
             }
             
+            // Validate privacy setting
+            $privacy = 'anyone'; // Default privacy
+            if (isset($data['privacy'])) {
+                if (!in_array($data['privacy'], ['anyone', 'school_members', 'private'])) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Privacy must be one of: "anyone", "school_members", or "private"'
+                    ]);
+                    exit;
+                }
+                $privacy = $data['privacy'];
+            }
+            
             $postType = $data['post_type'];
             $itemName = trim($data['item_name']);
             $description = isset($data['description']) ? trim($data['description']) : '';
@@ -426,11 +667,19 @@ try {
                 mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
             );
             
-            // Insert post with user_id, admin_approval_status, and photo_ids
-            $stmt = $pdo->prepare('INSERT INTO posts (id, user_id, admin_approval_status, title, post_type, item_name, description, content, location_found, current_location, date_found, tags, photo_ids, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())');
-            $stmt->execute([$uuid, $userId, $approvalStatus, $title, $postType, $itemName, $description, $content, $locationFound, $currentLocation, $dateFound, $tags, $photoIds]);
+            // Insert post with user_id, admin_approval_status, privacy, and photo_ids
+            $stmt = $pdo->prepare('INSERT INTO posts (id, user_id, admin_approval_status, privacy, title, post_type, item_name, description, content, location_found, current_location, date_found, tags, photo_ids, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())');
+            $stmt->execute([$uuid, $userId, $approvalStatus, $privacy, $title, $postType, $itemName, $description, $content, $locationFound, $currentLocation, $dateFound, $tags, $photoIds]);
             
             $newId = $uuid;
+            
+            // Log history for post creation
+            logPostHistory($pdo, $newId, $userId, 'created', 'Post created', [
+                'post_type' => $postType,
+                'item_name' => $itemName,
+                'approval_status' => $approvalStatus,
+                'privacy' => $privacy
+            ]);
             
             // Create notification for post creator
             $notificationTitle = $approvalStatus === 'approved' ? 'Post Approved' : 'Post Created';
@@ -492,7 +741,8 @@ try {
             
             if (!$isOwner && !$isAdmin) {
                 // Get user's role for debugging
-                $debugStmt = $pdo->prepare('SELECT id, email, role FROM users WHERE id = ? LIMIT 1');
+                // Note: $userId is the google_id from session
+                $debugStmt = $pdo->prepare('SELECT google_id, email, role FROM users WHERE google_id = ? LIMIT 1');
                 $debugStmt->execute([$userId]);
                 $debugUser = $debugStmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -515,11 +765,13 @@ try {
             $params = [];
             
             if (isset($data['title'])) {
+                $changedFields['title'] = trim($data['title']);
                 $updates[] = 'title = ?';
                 $params[] = trim($data['title']);
             }
             
             if (isset($data['post_type']) && in_array($data['post_type'], ['lost', 'found'])) {
+                $changedFields['post_type'] = $data['post_type'];
                 $updates[] = 'post_type = ?';
                 $params[] = $data['post_type'];
             }
@@ -584,6 +836,20 @@ try {
                 $params[] = $photoIds;
             }
             
+            // Handle privacy updates
+            if (isset($data['privacy'])) {
+                if (!in_array($data['privacy'], ['anyone', 'school_members', 'private'])) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Privacy must be one of: "anyone", "school_members", or "private"'
+                    ]);
+                    exit;
+                }
+                $updates[] = 'privacy = ?';
+                $params[] = $data['privacy'];
+            }
+            
             // Get post info for notifications
             $postInfoStmt = $pdo->prepare('SELECT user_id, item_name, title, follower_ids FROM posts WHERE id = ?');
             $postInfoStmt->execute([$id]);
@@ -604,6 +870,7 @@ try {
             // Track if approval status changed
             $approvalStatusChanged = false;
             $newApprovalStatus = null;
+            $changedFields = [];
             
             // Allow admins to update approval status
             if (isset($data['admin_approval_status']) && $isAdmin) {
@@ -623,6 +890,27 @@ try {
                 }
             }
             
+            // Allow admins and post owners to mark as claimed
+            if (isset($data['is_claimed'])) {
+                $isClaimed = intval($data['is_claimed']);
+                $changedFields['is_claimed'] = $isClaimed;
+                $updates[] = 'is_claimed = ?';
+                $params[] = $isClaimed;
+            }
+
+            // Allow admins and post owners to delete (soft delete)
+            if (isset($data['is_deleted'])) {
+                $isDeleted = intval($data['is_deleted']);
+                $changedFields['is_deleted'] = $isDeleted;
+                $updates[] = 'is_deleted = ?';
+                $params[] = $isDeleted;
+                
+                // Log deletion event if being deleted
+                if ($isDeleted) {
+                    logPostHistory($pdo, $id, $userId, 'deleted', 'Post deleted');
+                }
+            }
+            
             if (empty($updates)) {
                 http_response_code(400);
                 echo json_encode([
@@ -638,6 +926,41 @@ try {
             $sql = 'UPDATE posts SET ' . implode(', ', $updates) . ' WHERE id = ?';
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
+            
+            // Log history for the update
+            if (!empty($changedFields)) {
+                // Check if this is a claim/found action
+                if (isset($changedFields['is_claimed']) && $changedFields['is_claimed'] == 1) {
+                    // Get post type to determine message
+                    $typeStmt = $pdo->prepare('SELECT post_type FROM posts WHERE id = ?');
+                    $typeStmt->execute([$id]);
+                    $postType = $typeStmt->fetchColumn();
+                    
+                    $claimMessage = ($postType === 'lost') ? 'Marked as found by owner' : 'Marked as claimed';
+                    logPostHistory($pdo, $id, $userId, 'marked_claimed', $claimMessage, [
+                        'is_claimed' => true,
+                        'post_type' => $postType
+                    ]);
+                } else if ($approvalStatusChanged) {
+                    // Log approval status change
+                    $statusMessages = [
+                        'approved' => 'Post approved by admin',
+                        'rejected' => 'Post rejected by admin',
+                        'pending' => 'Post status changed to pending'
+                    ];
+                    logPostHistory($pdo, $id, $userId, 'status_changed', 
+                        $statusMessages[$newApprovalStatus] ?? 'Post status changed', 
+                        ['approval_status' => $newApprovalStatus]
+                    );
+                } else {
+                    // Log general update
+                    $fieldList = implode(', ', array_keys($changedFields));
+                    logPostHistory($pdo, $id, $userId, 'updated', 
+                        "Post updated: $fieldList", 
+                        $changedFields
+                    );
+                }
+            }
             
             // Create notifications
             // 1. Notify post creator if approval status changed

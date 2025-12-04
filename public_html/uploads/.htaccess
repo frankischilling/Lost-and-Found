@@ -1,0 +1,8 @@
+# Deny direct access to uploads directory
+# All files should be accessed through protected endpoints
+Order deny,allow
+Deny from all
+
+# Disable directory listing
+Options -Indexes
+

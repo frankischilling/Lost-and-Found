@@ -446,6 +446,13 @@
                 <span class="endpoint-title">Get All Posts</span>
                 <span class="method-badge method-get">GET</span>
             </div>
+            <div class="form-group" style="background: #e3f2fd; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
+                <small style="display: block; color: #1565c0;">
+                    <strong>Access Rules:</strong><br>
+                    • Regular users: See only approved posts<br>
+                    • Admins: See all posts (including pending and rejected)
+                </small>
+            </div>
             <div class="form-group">
                 <label>Filter by Type:</label>
                 <select id="filter-type" onchange="updateGetAllUrl()">
@@ -820,6 +827,106 @@
                 <div class="result-box" id="delete-comment-response"></div>
             </div>
         </div>
+        
+        <!-- Get All Users -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Get All Users</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <small style="display: block; color: #856404;">
+                    <strong>Admin Only:</strong> This endpoint requires admin privileges. Only administrators can view the list of all users.
+                </small>
+            </div>
+            <div class="endpoint-url" id="get-all-users-url"></div>
+            <button onclick="getAllUsers()">Get All Users</button>
+            <div class="result-container" id="get-all-users-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="get-all-users-status"></span>
+                </div>
+                <div class="result-box" id="get-all-users-response"></div>
+            </div>
+        </div>
+        
+        <!-- Get Single User -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Get Single User</span>
+                <span class="method-badge method-get">GET</span>
+            </div>
+            <div class="form-group">
+                <label>User ID (UUID):</label>
+                <input type="text" id="get-user-id" placeholder="Enter User UUID" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;" oninput="updateGetUserUrl();">
+            </div>
+            <div class="endpoint-url" id="get-user-url"></div>
+            <button onclick="getUser()">Get User</button>
+            <div class="result-container" id="get-user-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="get-user-status"></span>
+                </div>
+                <div class="result-box" id="get-user-response"></div>
+            </div>
+        </div>
+        
+        <!-- Update User Profile -->
+        <div class="endpoint-section">
+            <div class="endpoint-header">
+                <span class="endpoint-title">Update User Profile</span>
+                <span class="method-badge method-put">PUT</span>
+            </div>
+            <div class="form-group">
+                <label>User ID (UUID): <span style="color: red;">*</span></label>
+                <input type="text" id="update-user-id" placeholder="Enter User UUID (your own ID to update your profile)" pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="font-family: monospace;" oninput="updateUpdateUserUrl();" required>
+            </div>
+            <div class="form-group" style="background: #e3f2fd; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
+                <small style="display: block; color: #1565c0;">
+                    <strong>Permission Rules:</strong><br>
+                    • Regular users can only update their own profile (picture and phone number only)<br>
+                    • Admins can update any user's profile (all fields: name, picture, phone, email, role)
+                </small>
+            </div>
+            <div class="form-group">
+                <label>Profile Picture URL:</label>
+                <input type="text" id="update-user-picture" placeholder="Enter profile picture URL (optional)">
+                <small style="display: block; margin-top: 5px; color: #666;">Regular users can update this field</small>
+            </div>
+            <div class="form-group">
+                <label>Phone Number:</label>
+                <input type="text" id="update-user-phone" placeholder="Enter phone number (optional)">
+                <small style="display: block; margin-top: 5px; color: #666;">Regular users can update this field</small>
+            </div>
+            <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <label>Name: <span style="color: #856404;">(Admin Only)</span></label>
+                <input type="text" id="update-user-name" placeholder="Enter name (admin only)">
+                <small style="display: block; margin-top: 5px; color: #856404;">Only admins can update this field</small>
+            </div>
+            <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <label>Email: <span style="color: #856404;">(Admin Only)</span></label>
+                <input type="email" id="update-user-email" placeholder="Enter email (admin only)">
+                <small style="display: block; margin-top: 5px; color: #856404;">Only admins can update this field</small>
+            </div>
+            <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <label>Role: <span style="color: #856404;">(Admin Only)</span></label>
+                <select id="update-user-role">
+                    <option value="">Keep current</option>
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                </select>
+                <small style="display: block; margin-top: 5px; color: #856404;">Only admins can update this field</small>
+            </div>
+            <div class="endpoint-url" id="update-user-url"></div>
+            <button onclick="updateUser()">Update User Profile</button>
+            <div class="result-container" id="update-user-result">
+                <div class="result-header">
+                    <span class="result-label">Response:</span>
+                    <span class="status-badge" id="update-user-status"></span>
+                </div>
+                <div class="result-box" id="update-user-response"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -840,6 +947,9 @@
             updateGetCommentUrl();
             updateUpdateCommentUrl();
             updateDeleteCommentUrl();
+            updateGetUserUrl();
+            updateUpdateUserUrl();
+            updateGetAllUsersUrl();
             
             // Update URLs when values change
             document.getElementById('filter-type').addEventListener('change', updateGetAllUrl);
@@ -852,6 +962,8 @@
             document.getElementById('get-comment-id').addEventListener('input', updateGetCommentUrl);
             document.getElementById('update-comment-id').addEventListener('input', updateUpdateCommentUrl);
             document.getElementById('delete-comment-id').addEventListener('input', updateDeleteCommentUrl);
+            document.getElementById('get-user-id').addEventListener('input', updateGetUserUrl);
+            document.getElementById('update-user-id').addEventListener('input', updateUpdateUserUrl);
             
             // Add event listeners for comment buttons
             document.getElementById('create-comment-btn').addEventListener('click', createComment);
@@ -956,6 +1068,20 @@
         function updateDeleteCommentUrl() {
             const id = document.getElementById('delete-comment-id').value;
             document.getElementById('delete-comment-url').textContent = `DELETE ${BASE_URL}/comments.php?id=${id}`;
+        }
+        
+        function updateGetUserUrl() {
+            const id = document.getElementById('get-user-id').value;
+            document.getElementById('get-user-url').textContent = `GET ${BASE_URL}/users.php?id=${id}`;
+        }
+        
+        function updateUpdateUserUrl() {
+            const id = document.getElementById('update-user-id').value;
+            document.getElementById('update-user-url').textContent = `PUT ${BASE_URL}/users.php?id=${id}`;
+        }
+        
+        function updateGetAllUsersUrl() {
+            document.getElementById('get-all-users-url').textContent = `GET ${BASE_URL}/users.php`;
         }
         
         function displayResult(elementId, statusId, responseId, data, statusCode) {
@@ -2018,6 +2144,132 @@
                 displayResult('delete-comment-result', 'delete-comment-status', 'delete-comment-response', data, response.status);
             } catch (error) {
                 displayResult('delete-comment-result', 'delete-comment-status', 'delete-comment-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function getAllUsers() {
+            const button = event.target;
+            const originalText = button.textContent;
+            
+            button.innerHTML = '<span class="loading"></span>Loading...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/users.php`, {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                displayResult('get-all-users-result', 'get-all-users-status', 'get-all-users-response', data, response.status);
+            } catch (error) {
+                displayResult('get-all-users-result', 'get-all-users-status', 'get-all-users-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function getUser() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('get-user-id').value.trim();
+            
+            if (!id) {
+                alert('User ID (UUID) is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Loading...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/users.php?id=${encodeURIComponent(id)}`, {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                displayResult('get-user-result', 'get-user-status', 'get-user-response', data, response.status);
+            } catch (error) {
+                displayResult('get-user-result', 'get-user-status', 'get-user-response', { error: error.message }, 500);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function updateUser() {
+            const button = event.target;
+            const originalText = button.textContent;
+            const id = document.getElementById('update-user-id').value.trim();
+            const picture = document.getElementById('update-user-picture').value.trim();
+            const phone = document.getElementById('update-user-phone').value.trim();
+            const name = document.getElementById('update-user-name').value.trim();
+            const email = document.getElementById('update-user-email').value.trim();
+            const role = document.getElementById('update-user-role').value;
+            
+            if (!id) {
+                alert('User ID (UUID) is required!');
+                return;
+            }
+            
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                alert('Invalid UUID format. Please enter a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)');
+                return;
+            }
+            
+            const updateData = {};
+            if (picture) updateData.picture = picture;
+            if (phone) updateData.phone = phone;
+            if (name) updateData.name = name;
+            if (email) updateData.email = email;
+            if (role) updateData.role = role;
+            
+            if (Object.keys(updateData).length === 0) {
+                alert('Please provide at least one field to update!');
+                return;
+            }
+            
+            button.innerHTML = '<span class="loading"></span>Updating...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/users.php?id=${encodeURIComponent(id)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(updateData)
+                });
+                
+                let data;
+                try {
+                    const text = await response.text();
+                    data = JSON.parse(text);
+                } catch (e) {
+                    data = { error: 'Failed to parse response', raw: text || 'No response text' };
+                }
+                
+                displayResult('update-user-result', 'update-user-status', 'update-user-response', data, response.status);
+                
+                if (response.ok) {
+                    // Clear form
+                    document.getElementById('update-user-picture').value = '';
+                    document.getElementById('update-user-phone').value = '';
+                    document.getElementById('update-user-name').value = '';
+                    document.getElementById('update-user-email').value = '';
+                    document.getElementById('update-user-role').value = '';
+                }
+            } catch (error) {
+                displayResult('update-user-result', 'update-user-status', 'update-user-response', { error: error.message }, 500);
             } finally {
                 button.textContent = originalText;
                 button.disabled = false;

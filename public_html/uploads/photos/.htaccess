@@ -1,0 +1,5 @@
+# Deny direct access to photos
+# Photos should be accessed through view_photo.php which requires authentication
+Order deny,allow
+Deny from all
+

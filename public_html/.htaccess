@@ -1,0 +1,29 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Serve PHP files directly (in any directory)
+    RewriteCond %{REQUEST_URI} \.php$ [NC]
+    RewriteRule ^ - [L]
+
+    # Serve existing files directly
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # Special case: if requesting a directory (e.g., /admin or /auth),
+    # and no index.php exists inside it, let the SPA handle it
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteCond %{REQUEST_FILENAME}/index.php !-f
+    RewriteRule ^ /index.html [L]
+
+    # For all other non-file requests, serve index.html for the SPA
+    RewriteRule ^ /index.html [L]
+</IfModule>
+
+# Prevent Apache from forcing a trailing slash on directories
+<IfModule mod_dir.c>
+    DirectorySlash Off
+</IfModule>
+
+# Prevent directory listing
+Options -Indexes

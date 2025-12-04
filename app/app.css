@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "./ui.css";
+
+/* Effectively disable dark mode for now */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
     --font-sans:
@@ -52,6 +57,13 @@
     --color-neutral-light: #d4dded;
     --color-neutral-light-1: #bcc5d4;
     --color-neutral-light-2: #dee8fa;
+
+    /* Figma Colors */
+    --color-bright-red: #ff1f1f;
+    --color-muted-red: #991313;
+
+    --color-bright-green: #00cb14;
+    --color-muted-green: #00650a;
 }
 
 html,
@@ -60,8 +72,27 @@ body {
     @apply text-wentworth-black dark:text-neutral-light;
     @apply font-sans;
     @apply antialiased;
+    @apply min-h-screen;
 
     @media (prefers-color-scheme: dark) {
         color-scheme: dark;
     }
+
+    @apply bg-linear-to-r from-red-100 via-white to-green-100;
+}
+
+input,
+textarea {
+    @apply bg-white/60 dark:bg-wentworth-black-2;
+    @apply text-wentworth-black dark:text-neutral-light;
+    @apply border border-neutral-dark-1 dark:border-neutral-light-1;
+    @apply rounded-lg;
+}
+
+label {
+    @apply mb-1 ml-1;
+}
+
+button {
+    @apply hover:cursor-pointer;
 }
